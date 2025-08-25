@@ -1,0 +1,53 @@
+[project]
+name = "attentions"
+version = "0.1.0"
+description = "Modern PyTorch library for attention mechanisms in transformer models"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "torch>=2.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "mypy>=1.17.1",
+    "ruff>=0.12.10",
+    "black>=22.0.0",
+    "isort>=6.0.1",
+]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["attentions*"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+packages = ["attentions"]
+mypy_path = "src"
+# stricter settings
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+strict_optional = true
+# allow missing type hints in 3rd-party libs
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+lint.select = ["E", "F", "I", "UP", "B"]
