@@ -10,7 +10,8 @@ class VanillaSelfAttention(BaseSelfAttention):
     This class implements the basic scaled dot-product self-attention mechanism.
     
     Args:
-        d_model: Model dimension
+        d_model: Model dimension (dimension for Q, K, V projections and output)
+        input_dim: Input feature dimension (default: None, uses d_model)
         dropout: Dropout probability (default: 0.1)
         bias: Whether to use bias in linear layers (default: True)
         temperature: Temperature scaling for attention scores (default: 1.0)
@@ -19,17 +20,18 @@ class VanillaSelfAttention(BaseSelfAttention):
     def __init__(
         self,
         d_model: int,
+        input_dim: Optional[int] = None,
         dropout: float = 0.1,
         bias: bool = True,
         temperature: float = 1.0,
     ):
-        super().__init__(d_model, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias)
         self.temperature = temperature
         
         # Linear projections for query, key, value, and output
-        self.w_q = nn.Linear(d_model, d_model, bias=bias)
-        self.w_k = nn.Linear(d_model, d_model, bias=bias)
-        self.w_v = nn.Linear(d_model, d_model, bias=bias)
+        self.w_q = nn.Linear(self.input_dim, d_model, bias=bias)
+        self.w_k = nn.Linear(self.input_dim, d_model, bias=bias)
+        self.w_v = nn.Linear(self.input_dim, d_model, bias=bias)
         self.w_o = nn.Linear(d_model, d_model, bias=bias)
         
         # Initialize weights
@@ -51,13 +53,13 @@ class VanillaSelfAttention(BaseSelfAttention):
         """Forward pass of vanilla self-attention.
         
         Args:
-            x: Input tensor [batch_size, seq_len, d_model]
+            x: Input tensor [batch_size, seq_len, input_dim]
             mask: Optional attention mask
             return_attention: Whether to return attention weights
             **kwargs: Additional arguments
             
         Returns:
-            Tuple of (output, attention_weights)
+            Tuple of (output, attention_weights) where output is [batch_size, seq_len, d_model]
         """
         # Apply linear projections
         q = self.w_q(x)

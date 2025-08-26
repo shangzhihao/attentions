@@ -54,11 +54,24 @@ class BaseSelfAttention(nn.Module, ABC):
     Self-attention computes relationships within a single input sequence by
     using the same tensor for queries, keys, and values. This allows each
     position to attend to all positions in the same sequence.
+    
+    Args:
+        d_model: Model dimension for attention computation
+        input_dim: Input feature dimension (default: None, uses d_model)
+        dropout: Dropout probability (default: 0.1)
+        bias: Whether to use bias in linear layers (default: True)
     """
     
-    def __init__(self, d_model: int, dropout: float = 0.1, bias: bool = True):
+    def __init__(
+        self, 
+        d_model: int, 
+        input_dim: Optional[int] = None,
+        dropout: float = 0.1, 
+        bias: bool = True
+    ):
         super().__init__()
         self.d_model = d_model
+        self.input_dim = input_dim if input_dim is not None else d_model
         self.dropout_prob = dropout
         self.bias = bias
         self.dropout = nn.Dropout(dropout)
@@ -106,12 +119,13 @@ class BaseSelfAttention(nn.Module, ABC):
         """
         return {
             "d_model": self.d_model,
+            "input_dim": self.input_dim,
             "dropout": self.dropout_prob,
             "bias": self.bias,
         }
     
     def extra_repr(self) -> str:
         """Extra representation for debugging."""
-        return f"d_model={self.d_model}, dropout={self.dropout_prob}, bias={self.bias}"
+        return f"d_model={self.d_model}, input_dim={self.input_dim}, dropout={self.dropout_prob}, bias={self.bias}"
 
 
