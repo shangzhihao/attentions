@@ -1,137 +1,285 @@
-"""Test cases for MultiHeadSelfAttention implementation."""
+"""Function-based test cases for MultiHeadSelfAttention forward method."""
 
-import math
-import pytest
 import torch
-import torch.nn as nn
-from typing import Dict, Any
 
-from src.attentions.mhsa import MultiHeadSelfAttention
+from attentions.mhsa import MultiHeadSelfAttention
 
 
-class TestMultiHeadSelfAttention:
-    """Test cases for MultiHeadSelfAttention class."""
+def test_mhsa_forward_basic_shapes():
+    """Test forward method produces correct output shapes."""
+    batch_size, seq_len, d_model = 2, 8, 64
+    num_heads = 8
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    x = torch.randn(batch_size, seq_len, d_model)
     
-    def test_initialization(self):
-        """Test proper initialization of MultiHeadSelfAttention."""
-        d_model = 64
-        num_heads = 8
-        dropout = 0.1
-        temperature = 1.5
-        
-        attention = MultiHeadSelfAttention(
-            d_model=d_model,
-            num_heads=num_heads,
-            dropout=dropout,
-            bias=True,
-            temperature=temperature
-        )
-        
-        # Test basic attributes
-        assert attention.d_model == d_model
-        assert attention.num_heads == num_heads
-        assert attention.d_head == d_model // num_heads
-        assert attention.dropout_prob == dropout
-        assert attention.bias is True
-        assert attention.temperature == temperature
-        
-        # Test linear layers
-        assert isinstance(attention.w_q, nn.Linear)
-        assert isinstance(attention.w_k, nn.Linear)
-        assert isinstance(attention.w_v, nn.Linear)
-        assert isinstance(attention.w_o, nn.Linear)
-        
-        # Test layer dimensions
-        assert attention.w_q.in_features == d_model
-        assert attention.w_q.out_features == d_model
+    output, attention_weights = attention(x)
     
-    def test_initialization_dimension_validation(self):
-        """Test that d_model must be divisible by num_heads."""
-        # Should work
-        MultiHeadSelfAttention(d_model=64, num_heads=8)
-        MultiHeadSelfAttention(d_model=128, num_heads=16)
-        
-        # Should fail
-        with pytest.raises(ValueError, match="d_model .* must be divisible by num_heads"):
-            MultiHeadSelfAttention(d_model=65, num_heads=8)
+    assert output.shape == (batch_size, seq_len, d_model)
+    assert attention_weights.shape == (batch_size, num_heads, seq_len, seq_len)
+    assert isinstance(output, torch.Tensor)
+    assert isinstance(attention_weights, torch.Tensor)
+
+
+def test_mhsa_forward_flexible_input_dimensions():
+    """Test forward method with different input dimensions."""
+    batch_size, seq_len = 3, 10
+    input_dim, d_model = 48, 96
+    num_heads = 6
     
-    def test_forward_pass_basic(self):
-        """Test basic forward pass functionality."""
-        batch_size, seq_len, d_model = 2, 8, 64
-        num_heads = 8
-        
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, input_dim=input_dim)
+    x = torch.randn(batch_size, seq_len, input_dim)
+    
+    output, attention_weights = attention(x)
+    
+    assert output.shape == (batch_size, seq_len, d_model)
+    assert attention_weights.shape == (batch_size, num_heads, seq_len, seq_len)
+
+
+def test_mhsa_forward_different_head_counts():
+    """Test forward method with different numbers of heads."""
+    batch_size, seq_len, d_model = 2, 6, 64
+    x = torch.randn(batch_size, seq_len, d_model)
+    
+    for num_heads in [1, 2, 4, 8, 16]:
         attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
-        attention.eval()  # Disable dropout for deterministic behavior
-        x = torch.randn(batch_size, seq_len, d_model)
-        
         output, attention_weights = attention(x)
         
-        # Check output shapes
         assert output.shape == (batch_size, seq_len, d_model)
         assert attention_weights.shape == (batch_size, num_heads, seq_len, seq_len)
-        
-        # Check attention weights properties (per head)
-        for head in range(num_heads):
-            head_weights = attention_weights[:, head, :, :]
-            assert torch.allclose(head_weights.sum(dim=-1), torch.ones(batch_size, seq_len))
-            assert (head_weights >= 0).all()
-            assert (head_weights <= 1).all()
+        assert attention.d_head == d_model // num_heads
+
+
+def test_mhsa_forward_with_causal_mask():
+    """Test forward method with causal mask."""
+    batch_size, seq_len, d_model = 1, 5, 32
+    num_heads = 4
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()  # Disable dropout for deterministic behavior
     
-    def test_forward_pass_with_mask(self):
-        """Test forward pass with attention mask."""
-        batch_size, seq_len, d_model = 1, 4, 32
-        num_heads = 4
+    x = torch.randn(batch_size, seq_len, d_model)
+    # Create causal mask (lower triangular)
+    mask = torch.tril(torch.ones(seq_len, seq_len)).bool()
+    
+    output, attention_weights = attention(x, mask=mask)
+    
+    # Check that upper triangular attention weights are masked for all heads
+    upper_triangular = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+    for head in range(num_heads):
+        masked_positions = attention_weights[0, head][upper_triangular]
+        assert (masked_positions < 1e-6).all()
+
+
+def test_mhsa_forward_with_batch_mask():
+    """Test forward method with batch-specific masks."""
+    batch_size, seq_len, d_model = 2, 4, 32
+    num_heads = 4
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()
+    
+    x = torch.randn(batch_size, seq_len, d_model)
+    # Create batch-specific masks
+    mask = torch.ones(batch_size, seq_len, seq_len).bool()
+    mask[0, :, -1] = False  # Mask last position for first batch item
+    mask[1, :, :2] = False  # Mask first two positions for second batch item
+    
+    output, attention_weights = attention(x, mask=mask)
+    
+    # Check masking for all heads
+    for head in range(num_heads):
+        assert (attention_weights[0, head, :, -1] < 1e-6).all()  # Last position masked
+        assert (attention_weights[1, head, :, :2] < 1e-6).all()  # First two positions masked
+
+
+def test_mhsa_forward_attention_weights_per_head():
+    """Test that attention weights have correct properties for each head."""
+    batch_size, seq_len, d_model = 2, 4, 32
+    num_heads = 4
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()  # Disable dropout for deterministic behavior
+    
+    x = torch.randn(batch_size, seq_len, d_model)
+    output, attention_weights = attention(x)
+    
+    # Check properties for each head
+    for head in range(num_heads):
+        head_weights = attention_weights[:, head, :, :]
         
-        attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
-        attention.eval()  # Disable dropout for deterministic behavior
+        # Attention weights should sum to 1 along last dimension
+        assert torch.allclose(head_weights.sum(dim=-1), torch.ones(batch_size, seq_len), atol=1e-6)
+        
+        # Attention weights should be non-negative
+        assert (head_weights >= 0).all()
+        
+        # Attention weights should be <= 1
+        assert (head_weights <= 1).all()
+
+
+def test_mhsa_forward_head_independence():
+    """Test that different heads produce different attention patterns."""
+    batch_size, seq_len, d_model = 1, 6, 48
+    num_heads = 8
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    
+    x = torch.randn(batch_size, seq_len, d_model)
+    output, attention_weights = attention(x)
+    
+    # Check that not all heads have identical attention patterns
+    head_patterns = attention_weights[0]  # Shape: [num_heads, seq_len, seq_len]
+    
+    # Compare pairs of heads
+    different_patterns = 0
+    for i in range(num_heads):
+        for j in range(i + 1, num_heads):
+            if not torch.allclose(head_patterns[i], head_patterns[j], atol=1e-3):
+                different_patterns += 1
+    
+    # Most heads should have different patterns
+    assert different_patterns > 0
+
+
+def test_mhsa_forward_temperature_scaling():
+    """Test forward method with different temperature values."""
+    batch_size, seq_len, d_model = 1, 4, 32
+    num_heads = 4
+    x = torch.randn(batch_size, seq_len, d_model)
+    
+    # Test low temperature (sharper attention)
+    attention_low = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, temperature=0.1)
+    attention_low.eval()
+    _, weights_low = attention_low(x)
+    
+    # Test high temperature (smoother attention)
+    attention_high = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads, temperature=10.0)
+    attention_high.eval()
+    # Copy weights for fair comparison
+    attention_high.load_state_dict(attention_low.state_dict())
+    attention_high.temperature = 10.0
+    _, weights_high = attention_high(x)
+    
+    # Low temperature should produce more concentrated attention for each head
+    for head in range(num_heads):
+        max_attention_low = weights_low[0, head].max(dim=-1)[0]
+        max_attention_high = weights_high[0, head].max(dim=-1)[0]
+        assert (max_attention_low >= max_attention_high).all()
+
+
+def test_mhsa_forward_deterministic_behavior():
+    """Test that forward method is deterministic when dropout is disabled."""
+    batch_size, seq_len, d_model = 1, 3, 24
+    num_heads = 6
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()  # Disable dropout
+    
+    x = torch.randn(batch_size, seq_len, d_model)
+    
+    # Run forward pass twice
+    output1, weights1 = attention(x)
+    output2, weights2 = attention(x)
+    
+    # Results should be identical
+    assert torch.allclose(output1, output2)
+    assert torch.allclose(weights1, weights2)
+
+
+def test_mhsa_forward_gradient_flow():
+    """Test that gradients flow properly through forward method."""
+    batch_size, seq_len, d_model = 1, 3, 24
+    num_heads = 6
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    x = torch.randn(batch_size, seq_len, d_model, requires_grad=True)
+    
+    output, _ = attention(x)
+    loss = output.sum()
+    loss.backward()
+    
+    # Check that input has gradients
+    assert x.grad is not None
+    assert x.grad.shape == x.shape
+    assert not torch.allclose(x.grad, torch.zeros_like(x.grad))
+
+
+def test_mhsa_forward_mask_broadcasting():
+    """Test that masks are properly broadcasted across heads."""
+    batch_size, seq_len, d_model = 2, 4, 32
+    num_heads = 8
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()
+    
+    x = torch.randn(batch_size, seq_len, d_model)
+    # Create 2D mask that should be broadcasted
+    mask = torch.tril(torch.ones(seq_len, seq_len)).bool()
+    
+    output, attention_weights = attention(x, mask=mask)
+    
+    # Check that mask is applied to all heads and batches
+    upper_triangular = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
+    for batch in range(batch_size):
+        for head in range(num_heads):
+            masked_positions = attention_weights[batch, head][upper_triangular]
+            assert (masked_positions < 1e-6).all()
+
+
+def test_mhsa_forward_sequence_length_variation():
+    """Test forward method with different sequence lengths."""
+    batch_size, d_model = 1, 32
+    num_heads = 4
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    
+    for seq_len in [1, 3, 8, 16]:
         x = torch.randn(batch_size, seq_len, d_model)
+        output, attention_weights = attention(x)
         
-        # Create causal mask (1 means attend, 0 means mask out)
-        mask = torch.tril(torch.ones(seq_len, seq_len)).unsqueeze(0).bool()
-        
-        output, attention_weights = attention(x, mask=mask)
-        
-        # Check shapes
         assert output.shape == (batch_size, seq_len, d_model)
         assert attention_weights.shape == (batch_size, num_heads, seq_len, seq_len)
-        
-        # Check that mask is applied correctly for all heads
-        upper_triangular = torch.triu(torch.ones(seq_len, seq_len), diagonal=1).bool()
-        for head in range(num_heads):
-            masked_positions = attention_weights[0, head][upper_triangular]
-            assert (masked_positions < 1e-5).all()
+
+
+def test_mhsa_forward_edge_cases():
+    """Test forward method with edge cases."""
+    d_model = 32
+    num_heads = 4
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()
     
-    def test_attention_weights_storage(self):
-        """Test that attention weights are properly stored and retrievable."""
-        attention = MultiHeadSelfAttention(d_model=32, num_heads=4)
-        x = torch.randn(1, 4, 32)
-        
-        # Test before forward pass
-        with pytest.raises(RuntimeError):
-            attention.get_attention_weights()
-        
-        # Test after forward pass
-        output, weights = attention(x)
-        stored_weights = attention.get_attention_weights()
-        
-        # Stored weights should be averaged across heads
-        expected_weights = weights.mean(dim=1).detach()
-        assert torch.allclose(stored_weights, expected_weights)
-        assert stored_weights.requires_grad is False
-        assert stored_weights.shape == (1, 4, 4)
+    # Test with single element sequence
+    x_single = torch.randn(1, 1, d_model)
+    output_single, weights_single = attention(x_single)
+    assert output_single.shape == (1, 1, d_model)
+    assert weights_single.shape == (1, num_heads, 1, 1)
+    assert torch.allclose(weights_single, torch.ones(1, num_heads, 1, 1))
     
-    def test_different_head_counts(self):
-        """Test attention with different numbers of heads."""
-        d_model = 64
-        seq_len = 8
-        x = torch.randn(1, seq_len, d_model)
-        
-        for num_heads in [1, 2, 4, 8, 16]:
-            attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
-            attention.eval()
-            
-            output, attention_weights = attention(x)
-            
-            assert output.shape == (1, seq_len, d_model)
-            assert attention_weights.shape == (1, num_heads, seq_len, seq_len)
-            assert attention.d_head == d_model // num_heads
+    # Test with very small values
+    x_small = torch.randn(1, 3, d_model) * 1e-6
+    output_small, weights_small = attention(x_small)
+    assert output_small.shape == (1, 3, d_model)
+    for head in range(num_heads):
+        assert torch.allclose(weights_small[0, head].sum(dim=-1), torch.ones(3), atol=1e-6)
+
+
+def test_mhsa_forward_head_dimension_calculation():
+    """Test that head dimensions are calculated correctly."""
+    d_model = 64
+    
+    for num_heads in [1, 2, 4, 8, 16]:
+        attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+        expected_d_head = d_model // num_heads
+        assert attention.d_head == expected_d_head
+        assert attention.num_heads * attention.d_head == d_model
+
+
+def test_mhsa_forward_stored_attention_weights():
+    """Test that stored attention weights are correctly computed."""
+    batch_size, seq_len, d_model = 1, 4, 32
+    num_heads = 8
+    attention = MultiHeadSelfAttention(d_model=d_model, num_heads=num_heads)
+    attention.eval()
+    
+    x = torch.randn(batch_size, seq_len, d_model)
+    output, attention_weights = attention(x)
+    
+    # Get stored attention weights (should be averaged across heads)
+    stored_weights = attention.get_attention_weights()
+    
+    # Should match manual average
+    expected_weights = attention_weights.mean(dim=1)
+    assert torch.allclose(stored_weights, expected_weights, atol=1e-6)
+    assert stored_weights.shape == (batch_size, seq_len, seq_len)

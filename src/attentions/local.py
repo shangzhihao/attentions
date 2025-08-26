@@ -17,6 +17,7 @@ class LocalSelfAttention(BaseSelfAttention):
     
     Args:
         d_model: Model dimension (must be divisible by num_heads)
+        input_dim: Input feature dimension (default: None, uses d_model)
         window_size: Size of the local attention window (default: 128)
         num_heads: Number of attention heads (default: 8)
         dropout: Dropout probability (default: 0.1)
@@ -27,13 +28,14 @@ class LocalSelfAttention(BaseSelfAttention):
     def __init__(
         self,
         d_model: int,
+        input_dim: Optional[int] = None,
         window_size: int = 128,
         num_heads: int = 8,
         dropout: float = 0.1,
         bias: bool = True,
         temperature: float = 1.0,
     ):
-        super().__init__(d_model, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias)
         
         if window_size <= 0:
             raise ValueError(f"window_size must be positive, got {window_size}")
@@ -47,9 +49,9 @@ class LocalSelfAttention(BaseSelfAttention):
         self.temperature = temperature
         
         # Linear projections for query, key, value, and output
-        self.w_q = nn.Linear(d_model, d_model, bias=bias)
-        self.w_k = nn.Linear(d_model, d_model, bias=bias)
-        self.w_v = nn.Linear(d_model, d_model, bias=bias)
+        self.w_q = nn.Linear(self.input_dim, d_model, bias=bias)
+        self.w_k = nn.Linear(self.input_dim, d_model, bias=bias)
+        self.w_v = nn.Linear(self.input_dim, d_model, bias=bias)
         self.w_o = nn.Linear(d_model, d_model, bias=bias)
         
         # Initialize weights
@@ -177,7 +179,7 @@ class LocalSelfAttention(BaseSelfAttention):
         """Forward pass of local multi-head self-attention.
         
         Args:
-            x: Input tensor [batch_size, seq_len, d_model]
+            x: Input tensor [batch_size, seq_len, input_dim]
             mask: Optional attention mask to combine with local mask
             **kwargs: Additional arguments
             

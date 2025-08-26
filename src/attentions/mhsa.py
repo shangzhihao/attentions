@@ -17,6 +17,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
     Args:
         d_model: Model dimension (must be divisible by num_heads)
         num_heads: Number of attention heads
+        input_dim: Input feature dimension (default: None, uses d_model)
         dropout: Dropout probability (default: 0.1)
         bias: Whether to use bias in linear layers (default: True)
         temperature: Temperature scaling for attention scores (default: 1.0)
@@ -26,6 +27,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         self,
         d_model: int,
         num_heads: int,
+        input_dim: Optional[int] = None,
         dropout: float = 0.1,
         bias: bool = True,
         temperature: float = 1.0,
@@ -33,7 +35,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         if d_model % num_heads != 0:
             raise ValueError(f"d_model ({d_model}) must be divisible by num_heads ({num_heads})")
         
-        super().__init__(d_model, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias)
         
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
@@ -41,9 +43,9 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         
         # Linear projections for query, key, value, and output
         # Using single linear layers and reshaping for efficiency
-        self.w_q = nn.Linear(d_model, d_model, bias=bias)
-        self.w_k = nn.Linear(d_model, d_model, bias=bias)
-        self.w_v = nn.Linear(d_model, d_model, bias=bias)
+        self.w_q = nn.Linear(self.input_dim, d_model, bias=bias)
+        self.w_k = nn.Linear(self.input_dim, d_model, bias=bias)
+        self.w_v = nn.Linear(self.input_dim, d_model, bias=bias)
         self.w_o = nn.Linear(d_model, d_model, bias=bias)
         
         # Initialize weights
@@ -95,7 +97,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         """Forward pass of multi-head self-attention.
         
         Args:
-            x: Input tensor [batch_size, seq_len, d_model]
+            x: Input tensor [batch_size, seq_len, input_dim]
             mask: Optional attention mask [batch_size, seq_len, seq_len] or broadcastable
             **kwargs: Additional arguments
             
