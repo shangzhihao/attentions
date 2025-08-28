@@ -31,7 +31,7 @@ class GroupedSelfAttention(BaseSelfAttention):
         num_kv_heads: int,
         input_dim: Optional[int] = None,
         dropout: float = 0.1,
-        bias: bool = True,
+        bias: bool = False,
         temperature: float = 1.0,
     ):
         if d_model % num_query_heads != 0:

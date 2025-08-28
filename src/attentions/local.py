@@ -31,7 +31,7 @@ class LocalSelfAttention(BaseSelfAttention):
         window_size: int = 128,
         num_heads: int = 8,
         dropout: float = 0.1,
-        bias: bool = True,
+        bias: bool = False,
         temperature: float = 1.0,
     ):
         super().__init__(d_model, input_dim, dropout, bias)
