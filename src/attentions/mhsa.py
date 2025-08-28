@@ -2,7 +2,6 @@ from typing import Dict, Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import math
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
 
