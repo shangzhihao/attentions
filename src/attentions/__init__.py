@@ -11,6 +11,8 @@ from .base import (
 from .vanilla import VanillaSelfAttention
 from .mhsa import MultiHeadSelfAttention
 from .local import LocalSelfAttention
+from .group import GroupedSelfAttention
+from .dilation import DilatedSelfAttention
 
 __version__ = "0.1.0"
 
@@ -19,5 +21,7 @@ __all__ = [
     "VanillaSelfAttention",
     "MultiHeadSelfAttention",
     "LocalSelfAttention",
+    "GroupedSelfAttention",
+    "DilatedSelfAttention",
     "scaled_dot_product_attention",
 ]

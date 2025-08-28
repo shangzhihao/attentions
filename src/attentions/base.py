@@ -67,7 +67,7 @@ class BaseSelfAttention(nn.Module, ABC):
         d_model: int, 
         input_dim: Optional[int] = None,
         dropout: float = 0.1, 
-        bias: bool = True
+        bias: bool = False
     ):
         super().__init__()
         self.d_model = d_model
