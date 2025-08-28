@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
+from .utils import reshape_from_attention
 
 
 class GroupedSelfAttention(BaseSelfAttention):
@@ -108,21 +109,6 @@ class GroupedSelfAttention(BaseSelfAttention):
         # Shape: [batch_size, num_kv_heads, seq_len, d_kv] -> [batch_size, num_query_heads, seq_len, d_kv]
         return kv.repeat_interleave(self.group_size, dim=1)
     
-    def _reshape_from_attention(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape tensor back from attention format.
-        
-        Args:
-            x: Input tensor [batch_size, num_query_heads, seq_len, d_head]
-            
-        Returns:
-            Reshaped tensor [batch_size, seq_len, d_model]
-        """
-        batch_size, num_heads, seq_len, d_head = x.shape
-        # Transpose to [batch_size, seq_len, num_heads, d_head]
-        x = x.transpose(1, 2)
-        # Reshape to [batch_size, seq_len, d_model]
-        return x.contiguous().view(batch_size, seq_len, self.d_model)
-    
     def forward(
         self,
         x: torch.Tensor,
@@ -172,7 +158,7 @@ class GroupedSelfAttention(BaseSelfAttention):
         )
         
         # Reshape back to original format
-        attention_output = self._reshape_from_attention(attention_output)
+        attention_output = reshape_from_attention(attention_output, self.d_model)
         
         # Apply output projection
         output = self.w_o(attention_output)

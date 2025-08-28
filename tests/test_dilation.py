@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from src.attentions.dilation import DilatedSelfAttention
+from attentions.dilation import DilatedSelfAttention
 
 
 def test_dilated_self_attention_forward_shapes():

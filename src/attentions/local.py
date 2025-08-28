@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
+from .utils import reshape_for_attention, reshape_from_attention
 
 
 class LocalSelfAttention(BaseSelfAttention):
@@ -62,36 +63,6 @@ class LocalSelfAttention(BaseSelfAttention):
             nn.init.xavier_uniform_(module.weight)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
-    
-    def _reshape_for_attention(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape tensor for multi-head attention.
-        
-        Args:
-            x: Input tensor [batch_size, seq_len, d_model]
-            
-        Returns:
-            Reshaped tensor [batch_size, num_heads, seq_len, d_head]
-        """
-        batch_size, seq_len, d_model = x.shape
-        # Reshape to [batch_size, seq_len, num_heads, d_head]
-        x = x.view(batch_size, seq_len, self.num_heads, self.d_head)
-        # Transpose to [batch_size, num_heads, seq_len, d_head]
-        return x.transpose(1, 2)
-    
-    def _reshape_from_attention(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape tensor back from multi-head attention format.
-        
-        Args:
-            x: Input tensor [batch_size, num_heads, seq_len, d_head]
-            
-        Returns:
-            Reshaped tensor [batch_size, seq_len, d_model]
-        """
-        batch_size, num_heads, seq_len, d_head = x.shape
-        # Transpose to [batch_size, seq_len, num_heads, d_head]
-        x = x.transpose(1, 2)
-        # Reshape to [batch_size, seq_len, d_model]
-        return x.contiguous().view(batch_size, seq_len, self.d_model)
     
     def _create_local_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
         """Create a local attention mask.
@@ -193,15 +164,15 @@ class LocalSelfAttention(BaseSelfAttention):
         v = self.w_v(x)  # [batch_size, seq_len, d_model]
         
         # Reshape for multi-head attention
-        q = self._reshape_for_attention(q)  # [batch_size, num_heads, seq_len, d_head]
-        k = self._reshape_for_attention(k)  # [batch_size, num_heads, seq_len, d_head]
-        v = self._reshape_for_attention(v)  # [batch_size, num_heads, seq_len, d_head]
+        q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+        k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+        v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
         
         # Apply local attention with multiple heads
         attention_output, attention_weights = self._apply_local_attention(q, k, v, mask)
         
         # Reshape back to original format
-        attention_output = self._reshape_from_attention(attention_output)
+        attention_output = reshape_from_attention(attention_output, self.d_model)
         
         # Apply output projection
         output = self.w_o(attention_output)

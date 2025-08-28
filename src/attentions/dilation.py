@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
+from .utils import reshape_for_attention, reshape_from_attention
 
 
 class DilatedSelfAttention(BaseSelfAttention):
@@ -91,36 +92,6 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         return mask
     
-    def _reshape_for_attention(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape tensor for multi-head attention.
-        
-        Args:
-            x: Input tensor [batch_size, seq_len, d_model]
-            
-        Returns:
-            Reshaped tensor [batch_size, num_heads, seq_len, d_head]
-        """
-        batch_size, seq_len, d_model = x.shape
-        # Reshape to [batch_size, seq_len, num_heads, d_head]
-        x = x.view(batch_size, seq_len, self.num_heads, self.d_head)
-        # Transpose to [batch_size, num_heads, seq_len, d_head]
-        return x.transpose(1, 2)
-    
-    def _reshape_from_attention(self, x: torch.Tensor) -> torch.Tensor:
-        """Reshape tensor back from multi-head attention format.
-        
-        Args:
-            x: Input tensor [batch_size, num_heads, seq_len, d_head]
-            
-        Returns:
-            Reshaped tensor [batch_size, seq_len, d_model]
-        """
-        batch_size, num_heads, seq_len, d_head = x.shape
-        # Transpose to [batch_size, seq_len, num_heads, d_head]
-        x = x.transpose(1, 2)
-        # Reshape to [batch_size, seq_len, d_model]
-        return x.contiguous().view(batch_size, seq_len, self.d_model)
-    
     def forward(
         self,
         x: torch.Tensor,
@@ -148,9 +119,9 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         # Reshape for multi-head attention if num_heads > 1
         if self.num_heads > 1:
-            q = self._reshape_for_attention(q)  # [batch_size, num_heads, seq_len, d_head]
-            k = self._reshape_for_attention(k)  # [batch_size, num_heads, seq_len, d_head]
-            v = self._reshape_for_attention(v)  # [batch_size, num_heads, seq_len, d_head]
+            q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+            k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+            v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
         else:
             q = q.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
             k = k.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
@@ -185,7 +156,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         # Reshape back to original format
         if self.num_heads > 1:
-            attention_output = self._reshape_from_attention(attention_output)
+            attention_output = reshape_from_attention(attention_output, self.d_model)
         else:
             attention_output = attention_output.squeeze(1)  # Remove head dimension
         

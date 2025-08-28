@@ -2,7 +2,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from src.attentions.group import GroupedSelfAttention
+from attentions.group import GroupedSelfAttention
 
 
 def test_grouped_self_attention_initialization():
