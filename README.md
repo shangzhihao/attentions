@@ -13,12 +13,12 @@ A modern, extensible PyTorch library for attention mechanisms in transformer mod
 | **Local Self-Attention** | `LocalSelfAttention` | Windowed attention with configurable window size | Long sequences, O(n×w) complexity |
 | **Grouped Self-Attention** | `GroupedSelfAttention` | Memory-efficient attention with shared K,V heads | Efficient transformers (GQA/MQA) |
 | **Dilated Self-Attention** | `DilatedSelfAttention` | Sparse attention with dilation patterns | Structured sequences, long-range deps |
+| **Linear Attention** | Linear complexity attention using kernel methods | O(n) complexity for very long sequences |
 
 ### 🚧 Planned Implementations
 
 | Mechanism | Description | Benefits |
 |-----------|-------------|----------|
-| **Linear Attention** | Linear complexity attention using kernel methods | O(n) complexity for very long sequences |
 | **Block Attention** | Block-wise sparse attention patterns | Hierarchical attention, document modeling |
 | **Rotary Position** | Attention with rotary positional embeddings | Better positional understanding |
 | **Alibi Attention** | Attention with linear bias for positions | Length extrapolation capabilities |
