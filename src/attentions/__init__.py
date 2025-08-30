@@ -14,6 +14,7 @@ from .local import LocalSelfAttention
 from .group import GroupedSelfAttention
 from .dilation import DilatedSelfAttention
 from .linear import LinearSelfAttention
+from .block import BlockSelfAttention
 
 __version__ = "0.1.0"
 
@@ -25,5 +26,6 @@ __all__ = [
     "GroupedSelfAttention",
     "DilatedSelfAttention",
     "LinearSelfAttention",
+    "BlockSelfAttention",
     "scaled_dot_product_attention",
 ]
