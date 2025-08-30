@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
 from .utils import reshape_for_attention, reshape_from_attention
+from .masks import create_local_mask
 
 
 class LocalSelfAttention(BaseSelfAttention):
@@ -64,30 +65,7 @@ class LocalSelfAttention(BaseSelfAttention):
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
     
-    def _create_local_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        """Create a local attention mask.
-        
-        Args:
-            seq_len: Sequence length
-            device: Device to create the mask on
-            
-        Returns:
-            Local attention mask [seq_len, seq_len] where 1 means attend, 0 means mask
-        """
-        mask = torch.zeros(seq_len, seq_len, device=device, dtype=torch.bool)
-        
-        # Create local window mask
-        half_window = self.window_size // 2
-        
-        for i in range(seq_len):
-            # Define the local window boundaries
-            start_idx = max(0, i - half_window)
-            end_idx = min(seq_len, i + half_window + 1)
-            
-            # Allow attention within the local window
-            mask[i, start_idx:end_idx] = True
-        
-        return mask
+
     
     def _apply_local_attention(
         self,
@@ -110,7 +88,7 @@ class LocalSelfAttention(BaseSelfAttention):
         batch_size, num_heads, seq_len, d_head = query.shape
         
         # Create local attention mask
-        local_mask = self._create_local_mask(seq_len, query.device)
+        local_mask = create_local_mask(seq_len, self.window_size, query.device)
         
         # Expand local mask for multiple heads: [batch_size, num_heads, seq_len, seq_len]
         local_mask_expanded = local_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)

@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
 from .utils import reshape_for_attention, reshape_from_attention
+from .masks import create_dilated_mask
 
 
 class DilatedSelfAttention(BaseSelfAttention):
@@ -65,32 +66,7 @@ class DilatedSelfAttention(BaseSelfAttention):
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
     
-    def _create_dilated_mask(self, seq_len: int, device: torch.device) -> torch.Tensor:
-        """Create dilated attention mask.
-        
-        Args:
-            seq_len: Sequence length
-            device: Device to create the mask on
-            
-        Returns:
-            Dilated mask tensor [seq_len, seq_len] where 1 means attend, 0 means mask
-        """
-        mask = torch.zeros(seq_len, seq_len, device=device, dtype=torch.bool)
-        
-        for i in range(seq_len):
-            # Always attend to self
-            mask[i, i] = True
-            
-            # Attend to positions at dilation intervals
-            # Forward direction
-            for j in range(i + self.dilation_rate, seq_len, self.dilation_rate):
-                mask[i, j] = True
-            
-            # Backward direction
-            for j in range(i - self.dilation_rate, -1, -self.dilation_rate):
-                mask[i, j] = True
-        
-        return mask
+
     
     def forward(
         self,
@@ -128,7 +104,7 @@ class DilatedSelfAttention(BaseSelfAttention):
             v = v.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
         
         # Create dilated attention mask
-        dilated_mask = self._create_dilated_mask(seq_len, x.device)
+        dilated_mask = create_dilated_mask(seq_len, self.dilation_rate, x.device)
         
         # Combine with user-provided mask if given
         if mask is not None:

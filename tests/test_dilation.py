@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from attentions.dilation import DilatedSelfAttention
+from attentions.masks import create_dilated_mask
 
 
 def test_dilated_self_attention_forward_shapes():
@@ -65,7 +66,7 @@ def test_dilated_self_attention_dilation_pattern():
     dilation_rate = 2
     
     attention = DilatedSelfAttention(d_model=32, dilation_rate=dilation_rate)
-    mask = attention._create_dilated_mask(seq_len, torch.device("cpu"))
+    mask = create_dilated_mask(seq_len, dilation_rate, torch.device("cpu"))
 
     # Check mask properties
     assert mask.shape == (seq_len, seq_len)
@@ -104,7 +105,7 @@ def test_dilated_self_attention_different_dilation_rates():
 
         # Check sparsity increases with dilation rate
         attention_for_mask = DilatedSelfAttention(d_model=d_model, dilation_rate=dilation_rate)
-        mask = attention_for_mask._create_dilated_mask(seq_len, x.device)
+        mask = create_dilated_mask(seq_len, dilation_rate, x.device)
         sparsity = mask.float().mean().item()
 
         # Higher dilation rate should generally lead to sparser attention
