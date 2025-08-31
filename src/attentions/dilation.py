@@ -23,8 +23,9 @@ class DilatedSelfAttention(BaseSelfAttention):
         num_heads: Number of attention heads (default: 1)
         input_dim: Input feature dimension (default: None, uses d_model)
         dropout: Dropout probability (default: 0.1)
-        bias: Whether to use bias in linear layers (default: True)
+        bias: Whether to use bias in linear layers (default: False)
         temperature: Temperature scaling for attention scores (default: 1.0)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
@@ -36,6 +37,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
+        rope: bool = False,
     ):
         if dilation_rate < 1:
             raise ValueError(f"dilation_rate must be >= 1, got {dilation_rate}")
@@ -43,7 +45,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         if d_model % num_heads != 0:
             raise ValueError(f"d_model ({d_model}) must be divisible by num_heads ({num_heads})")
         
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         self.dilation_rate = dilation_rate
         self.num_heads = num_heads
@@ -58,13 +60,6 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         # Initialize weights
         self._init_weights()
-    
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
     
 
     
@@ -102,6 +97,10 @@ class DilatedSelfAttention(BaseSelfAttention):
             q = q.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
             k = k.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
             v = v.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
+        
+        # Apply RoPE if enabled
+        if self.rope:
+            q, k = self.apply_rope(q, k)
         
         # Create dilated attention mask
         dilated_mask = create_dilated_mask(seq_len, self.dilation_rate, x.device)

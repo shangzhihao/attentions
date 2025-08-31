@@ -22,8 +22,9 @@ class LocalSelfAttention(BaseSelfAttention):
         window_size: Size of the local attention window (default: 128)
         num_heads: Number of attention heads (default: 8)
         dropout: Dropout probability (default: 0.1)
-        bias: Whether to use bias in linear layers (default: True)
+        bias: Whether to use bias in linear layers (default: False)
         temperature: Temperature scaling for attention scores (default: 1.0)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
@@ -35,8 +36,9 @@ class LocalSelfAttention(BaseSelfAttention):
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
+        rope: bool = False,
     ):
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         if window_size <= 0:
             raise ValueError(f"window_size must be positive, got {window_size}")
@@ -57,13 +59,6 @@ class LocalSelfAttention(BaseSelfAttention):
         
         # Initialize weights
         self._init_weights()
-    
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
     
 
     
@@ -145,6 +140,10 @@ class LocalSelfAttention(BaseSelfAttention):
         q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
         k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
         v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+        
+        # Apply RoPE if enabled
+        if self.rope:
+            q, k = self.apply_rope(q, k)
         
         # Apply local attention with multiple heads
         attention_output, attention_weights = self._apply_local_attention(q, k, v, mask)

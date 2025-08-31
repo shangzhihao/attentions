@@ -21,8 +21,9 @@ class GroupedSelfAttention(BaseSelfAttention):
         num_kv_heads: Number of key-value heads (must divide num_query_heads evenly)
         input_dim: Input feature dimension (default: None, uses d_model)
         dropout: Dropout probability (default: 0.1)
-        bias: Whether to use bias in linear layers (default: True)
+        bias: Whether to use bias in linear layers (default: False)
         temperature: Temperature scaling for attention scores (default: 1.0)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
@@ -34,6 +35,7 @@ class GroupedSelfAttention(BaseSelfAttention):
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
+        rope: bool = False,
     ):
         if d_model % num_query_heads != 0:
             raise ValueError(f"d_model ({d_model}) must be divisible by num_query_heads ({num_query_heads})")
@@ -41,7 +43,7 @@ class GroupedSelfAttention(BaseSelfAttention):
         if num_query_heads % num_kv_heads != 0:
             raise ValueError(f"num_query_heads ({num_query_heads}) must be divisible by num_kv_heads ({num_kv_heads})")
         
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         self.num_query_heads = num_query_heads
         self.num_kv_heads = num_kv_heads
@@ -58,13 +60,6 @@ class GroupedSelfAttention(BaseSelfAttention):
         
         # Initialize weights
         self._init_weights()
-    
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
     
     def _reshape_queries_for_attention(self, q: torch.Tensor) -> torch.Tensor:
         """Reshape query tensor for grouped attention.
@@ -138,6 +133,10 @@ class GroupedSelfAttention(BaseSelfAttention):
         q = self._reshape_queries_for_attention(q)  # [batch_size, num_query_heads, seq_len, d_head]
         k = self._reshape_kv_for_attention(k)       # [batch_size, num_kv_heads, seq_len, d_kv]
         v = self._reshape_kv_for_attention(v)       # [batch_size, num_kv_heads, seq_len, d_kv]
+        
+        # Apply RoPE if enabled (before expanding k and v)
+        if self.rope:
+            q, k = self.apply_rope(q, k)
         
         # Expand k and v to match query groups
         k = self._expand_kv_for_groups(k)  # [batch_size, num_query_heads, seq_len, d_kv]

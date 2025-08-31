@@ -63,13 +63,6 @@ class AlibiSelfAttention(BaseSelfAttention):
         # Initialize weights
         self._init_weights()
     
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-    
     def _get_alibi_slopes(self, num_heads: int) -> torch.Tensor:
         """Compute ALiBi slopes for each attention head.
         

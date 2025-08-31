@@ -24,6 +24,7 @@ class LinearSelfAttention(BaseSelfAttention):
         bias: Whether to use bias in linear layers (default: False)
         feature_dim: Dimension of feature mapping (default: None, uses d_model)
         eps: Small constant for numerical stability (default: 1e-6)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
@@ -34,8 +35,9 @@ class LinearSelfAttention(BaseSelfAttention):
         bias: bool = False,
         feature_dim: Optional[int] = None,
         eps: float = 1e-6,
+        rope: bool = False,
     ):
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         self.feature_dim = feature_dim if feature_dim is not None else d_model
         self.eps = eps
@@ -48,13 +50,6 @@ class LinearSelfAttention(BaseSelfAttention):
         
         # Initialize weights
         self._init_weights()
-    
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
     
     def _feature_map(self, x: torch.Tensor) -> torch.Tensor:
         """Apply feature mapping function to approximate softmax.
@@ -92,6 +87,15 @@ class LinearSelfAttention(BaseSelfAttention):
         q = self.w_q(x)  # [batch_size, seq_len, feature_dim]
         k = self.w_k(x)  # [batch_size, seq_len, feature_dim]
         v = self.w_v(x)  # [batch_size, seq_len, d_model]
+        
+        # Apply RoPE if enabled (only to q and k)
+        if self.rope:
+            # Add head dimension for RoPE compatibility
+            q_with_head = q.unsqueeze(1)  # [batch_size, 1, seq_len, feature_dim]
+            k_with_head = k.unsqueeze(1)  # [batch_size, 1, seq_len, feature_dim]
+            q_with_head, k_with_head = self.apply_rope(q_with_head, k_with_head)
+            q = q_with_head.squeeze(1)  # [batch_size, seq_len, feature_dim]
+            k = k_with_head.squeeze(1)  # [batch_size, seq_len, feature_dim]
         
         # Apply feature mapping
         q_prime = self._feature_map(q)  # [batch_size, seq_len, feature_dim]
