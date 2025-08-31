@@ -1,11 +1,11 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
-from .utils import reshape_for_attention, reshape_from_attention
 from .masks import create_dilated_mask
+from .utils import reshape_for_attention, reshape_from_attention
 
 
 class DilatedSelfAttention(BaseSelfAttention):
@@ -23,8 +23,9 @@ class DilatedSelfAttention(BaseSelfAttention):
         num_heads: Number of attention heads (default: 1)
         input_dim: Input feature dimension (default: None, uses d_model)
         dropout: Dropout probability (default: 0.1)
-        bias: Whether to use bias in linear layers (default: True)
+        bias: Whether to use bias in linear layers (default: False)
         temperature: Temperature scaling for attention scores (default: 1.0)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
@@ -32,10 +33,11 @@ class DilatedSelfAttention(BaseSelfAttention):
         d_model: int,
         dilation_rate: int = 2,
         num_heads: int = 1,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
+        rope: bool = False,
     ):
         if dilation_rate < 1:
             raise ValueError(f"dilation_rate must be >= 1, got {dilation_rate}")
@@ -43,7 +45,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         if d_model % num_heads != 0:
             raise ValueError(f"d_model ({d_model}) must be divisible by num_heads ({num_heads})")
         
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         self.dilation_rate = dilation_rate
         self.num_heads = num_heads
@@ -59,21 +61,14 @@ class DilatedSelfAttention(BaseSelfAttention):
         # Initialize weights
         self._init_weights()
     
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-    
 
     
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of dilated self-attention.
         
         Args:
@@ -95,13 +90,17 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         # Reshape for multi-head attention if num_heads > 1
         if self.num_heads > 1:
-            q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-            k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-            v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+            q = reshape_for_attention(q, self.num_heads, self.d_head)
+            k = reshape_for_attention(k, self.num_heads, self.d_head)
+            v = reshape_for_attention(v, self.num_heads, self.d_head)
         else:
             q = q.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
             k = k.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
             v = v.unsqueeze(1)  # [batch_size, 1, seq_len, d_model]
+        
+        # Apply RoPE if enabled
+        if self.rope:
+            q, k = self.apply_rope(q, k)
         
         # Create dilated attention mask
         dilated_mask = create_dilated_mask(seq_len, self.dilation_rate, x.device)
@@ -109,21 +108,31 @@ class DilatedSelfAttention(BaseSelfAttention):
         # Combine with user-provided mask if given
         if mask is not None:
             if mask.dim() == 2:  # [seq_len, seq_len]
-                mask = mask.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1)
+                mask = mask.unsqueeze(0).unsqueeze(0).expand(
+                    batch_size, self.num_heads, -1, -1
+                )
             elif mask.dim() == 3:  # [batch_size, seq_len, seq_len]
                 mask = mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
             
             # Convert boolean mask to match dilated_mask format if needed
             if mask.dtype == torch.bool:
-                combined_mask = dilated_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1) & mask
+                combined_mask = (
+                    dilated_mask.unsqueeze(0).unsqueeze(0).expand(
+                        batch_size, self.num_heads, -1, -1
+                    ) & mask
+                )
             else:
                 # For additive masks, convert dilated_mask to additive format
                 dilated_additive = torch.where(dilated_mask, 0.0, float('-inf'))
-                dilated_additive = dilated_additive.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1)
+                dilated_additive = dilated_additive.unsqueeze(0).unsqueeze(0).expand(
+                    batch_size, self.num_heads, -1, -1
+                )
                 combined_mask = dilated_additive + mask
         else:
             # Use only dilated mask
-            combined_mask = dilated_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1)
+            combined_mask = dilated_mask.unsqueeze(0).unsqueeze(0).expand(
+                batch_size, self.num_heads, -1, -1
+            )
         
         # Compute scaled dot-product attention
         attention_output, attention_weights = scaled_dot_product_attention(
@@ -148,7 +157,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({

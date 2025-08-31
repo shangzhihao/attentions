@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 from attentions.dilation import DilatedSelfAttention
@@ -157,7 +156,7 @@ def test_dilated_self_attention_temperature_scaling():
     # Copy weights to ensure same initialization
     with torch.no_grad():
         for low_param, high_param in zip(
-            attention_low.parameters(), attention_high.parameters()
+            attention_low.parameters(), attention_high.parameters(), strict=False
         ):
             high_param.copy_(low_param)
 

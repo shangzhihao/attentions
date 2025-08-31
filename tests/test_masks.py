@@ -4,12 +4,12 @@ import pytest
 import torch
 
 from attentions.masks import (
-    create_causal_mask,
-    create_padding_mask, 
-    create_local_mask,
-    create_dilated_mask,
-    create_block_mask,
     combine_masks,
+    create_block_mask,
+    create_causal_mask,
+    create_dilated_mask,
+    create_local_mask,
+    create_padding_mask,
     expand_mask_for_heads,
 )
 
@@ -203,7 +203,6 @@ def test_combine_masks():
 def test_combine_masks_multiple():
     """Test combining multiple masks."""
     size = 3
-    device = torch.device("cpu")
     
     mask1 = torch.ones(size, size, dtype=torch.bool)
     mask2 = torch.tril(torch.ones(size, size, dtype=torch.bool))

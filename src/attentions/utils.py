@@ -30,7 +30,8 @@ def reshape_for_attention(x: torch.Tensor, num_heads: int, d_head: int) -> torch
     expected_d_model = num_heads * d_head
     if d_model != expected_d_model:
         raise ValueError(
-            f"d_model ({d_model}) must equal num_heads * d_head ({num_heads} * {d_head} = {expected_d_model})"
+            f"d_model ({d_model}) must equal num_heads * d_head "
+            f"({num_heads} * {d_head} = {expected_d_model})"
         )
     
     # Reshape to [batch_size, seq_len, num_heads, d_head]
@@ -61,7 +62,8 @@ def reshape_from_attention(x: torch.Tensor, d_model: int) -> torch.Tensor:
     computed_d_model = num_heads * d_head
     if d_model != computed_d_model:
         raise ValueError(
-            f"d_model ({d_model}) must equal num_heads * d_head ({num_heads} * {d_head} = {computed_d_model})"
+            f"d_model ({d_model}) must equal num_heads * d_head "
+            f"({num_heads} * {d_head} = {computed_d_model})"
         )
     
     # Transpose to [batch_size, seq_len, num_heads, d_head]

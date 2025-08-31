@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -29,20 +29,22 @@ class BlockSelfAttention(BaseSelfAttention):
         bias: Whether to use bias in linear layers (default: False)
         temperature: Temperature scaling for attention scores (default: 1.0)
         overlap: Whether blocks should have overlap for boundary handling (default: False)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
         self,
         d_model: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         block_size: int = 64,
         num_heads: int = 8,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
         overlap: bool = False,
+        rope: bool = False,
     ):
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         if block_size <= 0:
             raise ValueError(f"block_size must be positive, got {block_size}")
@@ -65,20 +67,13 @@ class BlockSelfAttention(BaseSelfAttention):
         # Initialize weights
         self._init_weights()
     
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-    
     def _apply_block_attention(
         self,
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply block-wise multi-head attention.
         
         Args:
@@ -94,32 +89,40 @@ class BlockSelfAttention(BaseSelfAttention):
         device = query.device
         
         # Get block indices
-        block_starts, block_ends = self._create_block_indices(seq_len, self.block_size, self.overlap)
-        num_blocks = len(block_starts)
+        block_starts, block_ends = self._create_block_indices(
+            seq_len, self.block_size, self.overlap
+        )
         
         # Initialize output tensors
         output = torch.zeros_like(query)
-        attention_weights = torch.zeros(batch_size, num_heads, seq_len, seq_len, device=device, dtype=query.dtype)
+        attention_weights = torch.zeros(
+            batch_size, num_heads, seq_len, seq_len, device=device, dtype=query.dtype
+        )
         
         # Process each block
-        for i, (start, end) in enumerate(zip(block_starts, block_ends)):
+        for i, (start, end) in enumerate(
+            zip(block_starts, block_ends, strict=False)
+        ):
             start_idx, end_idx = start.item(), end.item()
-            block_len = end_idx - start_idx
             
             # Extract block data
-            q_block = query[:, :, start_idx:end_idx, :]  # [batch_size, num_heads, block_len, d_head]
-            k_block = key[:, :, start_idx:end_idx, :]    # [batch_size, num_heads, block_len, d_head]
-            v_block = value[:, :, start_idx:end_idx, :]  # [batch_size, num_heads, block_len, d_head]
+            q_block = query[:, :, start_idx:end_idx, :]
+            k_block = key[:, :, start_idx:end_idx, :]
+            v_block = value[:, :, start_idx:end_idx, :]
             
             # Extract block mask if provided
             block_mask = None
             if mask is not None:
                 if mask.dim() == 2:  # [seq_len, seq_len]
                     block_mask = mask[start_idx:end_idx, start_idx:end_idx]
-                    block_mask = block_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)
+                    block_mask = block_mask.unsqueeze(0).unsqueeze(0).expand(
+                        batch_size, num_heads, -1, -1
+                    )
                 elif mask.dim() == 3:  # [batch_size, seq_len, seq_len]
                     block_mask = mask[:, start_idx:end_idx, start_idx:end_idx]
-                    block_mask = block_mask.unsqueeze(1).expand(-1, num_heads, -1, -1)
+                    block_mask = block_mask.unsqueeze(1).expand(
+                        -1, num_heads, -1, -1
+                    )
                 elif mask.dim() == 4:  # [batch_size, num_heads, seq_len, seq_len]
                     block_mask = mask[:, :, start_idx:end_idx, start_idx:end_idx]
             
@@ -144,7 +147,9 @@ class BlockSelfAttention(BaseSelfAttention):
                     output_end_in_block = output_start_in_block + overlap_len
                     
                     # Weight by position in block (linear interpolation)
-                    alpha = torch.linspace(0.0, 1.0, int(overlap_len), device=device).view(1, 1, -1, 1)
+                    alpha = torch.linspace(
+                        0.0, 1.0, int(overlap_len), device=device
+                    ).view(1, 1, -1, 1)
                     
                     output[:, :, overlap_start:end_idx, :] = (
                         (1 - alpha) * output[:, :, overlap_start:end_idx, :] +
@@ -168,9 +173,9 @@ class BlockSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of block-wise multi-head self-attention.
         
         Args:
@@ -197,6 +202,10 @@ class BlockSelfAttention(BaseSelfAttention):
             k = reshape_for_attention(k, self.num_heads, self.d_head)
             v = reshape_for_attention(v, self.num_heads, self.d_head)
             
+            # Apply RoPE if enabled
+            if self.rope:
+                q, k = self.apply_rope(q, k)
+            
             # Apply regular attention
             attention_output, attention_weights = scaled_dot_product_attention(
                 q, k, v, mask=mask, dropout=self.dropout, temperature=self.temperature
@@ -212,9 +221,13 @@ class BlockSelfAttention(BaseSelfAttention):
             v = self.w_v(x)  # [batch_size, seq_len, d_model]
             
             # Reshape for multi-head attention
-            q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-            k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-            v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+            q = reshape_for_attention(q, self.num_heads, self.d_head)
+            k = reshape_for_attention(k, self.num_heads, self.d_head)
+            v = reshape_for_attention(v, self.num_heads, self.d_head)
+            
+            # Apply RoPE if enabled
+            if self.rope:
+                q, k = self.apply_rope(q, k)
             
             # Apply block attention
             attention_output, attention_weights = self._apply_block_attention(q, k, v, mask)
@@ -235,7 +248,7 @@ class BlockSelfAttention(BaseSelfAttention):
         seq_len: int,
         block_size: int,
         overlap: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Create block start and end indices for block-wise attention.
         
         Args:
@@ -270,7 +283,7 @@ class BlockSelfAttention(BaseSelfAttention):
         
         return torch.tensor(block_starts), torch.tensor(block_ends)
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({
@@ -285,4 +298,7 @@ class BlockSelfAttention(BaseSelfAttention):
     def extra_repr(self) -> str:
         """Extra representation for debugging."""
         base_repr = super().extra_repr()
-        return f"{base_repr}, block_size={self.block_size}, num_heads={self.num_heads}, d_head={self.d_head}, temperature={self.temperature}, overlap={self.overlap}"
+        return (
+            f"{base_repr}, block_size={self.block_size}, num_heads={self.num_heads}, "
+            f"d_head={self.d_head}, temperature={self.temperature}, overlap={self.overlap}"
+        )

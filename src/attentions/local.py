@@ -1,11 +1,11 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
-from .utils import reshape_for_attention, reshape_from_attention
 from .masks import create_local_mask
+from .utils import reshape_for_attention, reshape_from_attention
 
 
 class LocalSelfAttention(BaseSelfAttention):
@@ -22,21 +22,23 @@ class LocalSelfAttention(BaseSelfAttention):
         window_size: Size of the local attention window (default: 128)
         num_heads: Number of attention heads (default: 8)
         dropout: Dropout probability (default: 0.1)
-        bias: Whether to use bias in linear layers (default: True)
+        bias: Whether to use bias in linear layers (default: False)
         temperature: Temperature scaling for attention scores (default: 1.0)
+        rope: Whether to apply Rotary Position Embedding (default: False)
     """
     
     def __init__(
         self,
         d_model: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         window_size: int = 128,
         num_heads: int = 8,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
+        rope: bool = False,
     ):
-        super().__init__(d_model, input_dim, dropout, bias)
+        super().__init__(d_model, input_dim, dropout, bias, rope)
         
         if window_size <= 0:
             raise ValueError(f"window_size must be positive, got {window_size}")
@@ -58,13 +60,6 @@ class LocalSelfAttention(BaseSelfAttention):
         # Initialize weights
         self._init_weights()
     
-    def _init_weights(self) -> None:
-        """Initialize linear layer weights using Xavier uniform initialization."""
-        for module in [self.w_q, self.w_k, self.w_v, self.w_o]:
-            nn.init.xavier_uniform_(module.weight)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-    
 
     
     def _apply_local_attention(
@@ -72,8 +67,8 @@ class LocalSelfAttention(BaseSelfAttention):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply local multi-head attention with windowing.
         
         Args:
@@ -90,8 +85,10 @@ class LocalSelfAttention(BaseSelfAttention):
         # Create local attention mask
         local_mask = create_local_mask(seq_len, self.window_size, query.device)
         
-        # Expand local mask for multiple heads: [batch_size, num_heads, seq_len, seq_len]
-        local_mask_expanded = local_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)
+        # Expand local mask for multiple heads
+        local_mask_expanded = local_mask.unsqueeze(0).unsqueeze(0).expand(
+            batch_size, num_heads, -1, -1
+        )
         
         # Combine with additional mask if provided
         if mask is not None:
@@ -121,9 +118,9 @@ class LocalSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of local multi-head self-attention.
         
         Args:
@@ -142,9 +139,13 @@ class LocalSelfAttention(BaseSelfAttention):
         v = self.w_v(x)  # [batch_size, seq_len, d_model]
         
         # Reshape for multi-head attention
-        q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-        k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-        v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+        q = reshape_for_attention(q, self.num_heads, self.d_head)
+        k = reshape_for_attention(k, self.num_heads, self.d_head)
+        v = reshape_for_attention(v, self.num_heads, self.d_head)
+        
+        # Apply RoPE if enabled
+        if self.rope:
+            q, k = self.apply_rope(q, k)
         
         # Apply local attention with multiple heads
         attention_output, attention_weights = self._apply_local_attention(q, k, v, mask)
@@ -161,7 +162,7 @@ class LocalSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({
@@ -175,4 +176,7 @@ class LocalSelfAttention(BaseSelfAttention):
     def extra_repr(self) -> str:
         """Extra representation for debugging."""
         base_repr = super().extra_repr()
-        return f"{base_repr}, window_size={self.window_size}, num_heads={self.num_heads}, d_head={self.d_head}, temperature={self.temperature}"
+        return (
+            f"{base_repr}, window_size={self.window_size}, num_heads={self.num_heads}, "
+            f"d_head={self.d_head}, temperature={self.temperature}"
+        )

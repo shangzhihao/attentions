@@ -5,7 +5,6 @@ across different attention mechanism implementations. All mask functions follow
 the convention where True/1 means "attend" and False/0 means "mask out".
 """
 
-from typing import Optional, Tuple
 
 import torch
 
@@ -25,8 +24,8 @@ def create_causal_mask(seq_len: int, device: torch.device) -> torch.Tensor:
 
 def create_padding_mask(
     seq_lengths: torch.Tensor, 
-    max_len: Optional[int] = None,
-    device: Optional[torch.device] = None
+    max_len: int | None = None,
+    device: torch.device | None = None
 ) -> torch.Tensor:
     """Create a padding mask for sequences with different lengths.
     
@@ -41,7 +40,7 @@ def create_padding_mask(
     if device is None:
         device = seq_lengths.device
     if max_len is None:
-        max_len = seq_lengths.max().item()
+        max_len = int(seq_lengths.max().item())
     
     batch_size = seq_lengths.size(0)
     
@@ -162,11 +161,11 @@ def combine_masks(*masks: torch.Tensor) -> torch.Tensor:
 
 
 def expand_mask_for_heads(
-    mask: torch.Tensor,
+    mask: torch.Tensor | None,
     batch_size: int,
     num_heads: int,
     seq_len: int
-) -> torch.Tensor:
+) -> torch.Tensor | None:
     """Expand attention mask for multi-head attention.
     
     Args:
@@ -191,11 +190,17 @@ def expand_mask_for_heads(
         expanded = mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)
     elif mask.dim() == 3:  # [batch_size, seq_len, seq_len]
         if mask.size(0) != batch_size or mask.size(1) != seq_len or mask.size(2) != seq_len:
-            raise ValueError(f"3D mask shape {mask.shape} incompatible with dimensions ({batch_size}, {seq_len}, {seq_len})")
+            raise ValueError(
+                f"3D mask shape {mask.shape} incompatible with dimensions "
+                f"({batch_size}, {seq_len}, {seq_len})"
+            )
         expanded = mask.unsqueeze(1).expand(-1, num_heads, -1, -1)
     elif mask.dim() == 4:  # [batch_size, num_heads, seq_len, seq_len]
         if mask.shape != (batch_size, num_heads, seq_len, seq_len):
-            raise ValueError(f"4D mask shape {mask.shape} incompatible with expected ({batch_size}, {num_heads}, {seq_len}, {seq_len})")
+            raise ValueError(
+                f"4D mask shape {mask.shape} incompatible with expected "
+                f"({batch_size}, {num_heads}, {seq_len}, {seq_len})"
+            )
         expanded = mask
     else:
         raise ValueError(f"Unsupported mask dimensions: {mask.dim()}")

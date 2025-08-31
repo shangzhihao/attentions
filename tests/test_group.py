@@ -1,6 +1,5 @@
 import pytest
 import torch
-import torch.nn as nn
 
 from attentions.group import GroupedSelfAttention
 
@@ -161,7 +160,7 @@ def test_grouped_self_attention_temperature_scaling():
     
     # Copy weights to ensure same initialization
     with torch.no_grad():
-        for low_param, high_param in zip(attention_low.parameters(), attention_high.parameters()):
+        for low_param, high_param in zip(attention_low.parameters(), attention_high.parameters(), strict=False):
             high_param.copy_(low_param)
     
     _, weights_low = attention_low(x)
