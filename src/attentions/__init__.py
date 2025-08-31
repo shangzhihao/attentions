@@ -15,6 +15,7 @@ from .group import GroupedSelfAttention
 from .dilation import DilatedSelfAttention
 from .linear import LinearSelfAttention
 from .block import BlockSelfAttention
+from .alibi import AlibiSelfAttention
 from .masks import (
     create_causal_mask,
     create_padding_mask,
@@ -39,6 +40,7 @@ __all__ = [
     "DilatedSelfAttention",
     "LinearSelfAttention",
     "BlockSelfAttention",
+    "AlibiSelfAttention",
     # Mask utilities
     "create_causal_mask",
     "create_padding_mask",

@@ -15,13 +15,13 @@ A modern, extensible PyTorch library for attention mechanisms in transformer mod
 | **Dilated Self-Attention** | `DilatedSelfAttention` | Sparse attention with dilation patterns | Structured sequences, long-range deps |
 | **Linear Attention** | Linear complexity attention using kernel methods | O(n) complexity for very long sequences |
 | **Block Attention** | Block-wise sparse attention patterns | Hierarchical attention, document modeling |
+| **Alibi Attention** | Attention with linear bias for positions | Length extrapolation capabilities |
 
 ### 🚧 Planned Implementations
 
 | Mechanism | Description | Benefits |
 |-----------|-------------|----------|
 | **Rotary Position** | Attention with rotary positional embeddings | Better positional understanding |
-| **Alibi Attention** | Attention with linear bias for positions | Length extrapolation capabilities |
 
 ## 🚀 Quick Start
 
