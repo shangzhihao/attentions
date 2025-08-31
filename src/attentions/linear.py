@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -30,10 +30,10 @@ class LinearSelfAttention(BaseSelfAttention):
     def __init__(
         self,
         d_model: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
-        feature_dim: Optional[int] = None,
+        feature_dim: int | None = None,
         eps: float = 1e-6,
         rope: bool = False,
     ):
@@ -67,9 +67,9 @@ class LinearSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of linear self-attention.
         
         Args:
@@ -162,7 +162,7 @@ class LinearSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({

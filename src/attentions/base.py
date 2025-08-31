@@ -7,8 +7,8 @@ and extensibility.
 """
 
 import math
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, Tuple
+from abc import ABC
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -19,10 +19,10 @@ def scaled_dot_product_attention(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    mask: Optional[torch.Tensor] = None,
-    dropout: Optional[nn.Dropout] = None,
+    mask: torch.Tensor | None = None,
+    dropout: nn.Dropout | None = None,
     temperature: float = 1.0,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     d_k = query.size(-1)
     
     # Compute attention scores
@@ -66,7 +66,7 @@ class BaseSelfAttention(nn.Module, ABC):
     def __init__(
         self, 
         d_model: int, 
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1, 
         bias: bool = False,
         rope: bool = False
@@ -80,11 +80,11 @@ class BaseSelfAttention(nn.Module, ABC):
         self.dropout = nn.Dropout(dropout)
         
         # Initialize attention weights storage
-        self.attention_weights: Optional[torch.Tensor] = None
+        self.attention_weights: torch.Tensor | None = None
         
         # Initialize RoPE cache if enabled
         if self.rope:
-            self._rope_cache: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
+            self._rope_cache: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
     
     def _init_weights(self) -> None:
         """Initialize linear layer weights using Xavier uniform initialization.
@@ -109,12 +109,12 @@ class BaseSelfAttention(nn.Module, ABC):
     
     def _create_projection_layers(
         self, 
-        q_dim: Optional[int] = None, 
-        k_dim: Optional[int] = None, 
-        v_dim: Optional[int] = None, 
-        o_dim: Optional[int] = None,
-        bias: Optional[bool] = None
-    ) -> Tuple[nn.Linear, nn.Linear, nn.Linear, nn.Linear]:
+        q_dim: int | None = None, 
+        k_dim: int | None = None, 
+        v_dim: int | None = None, 
+        o_dim: int | None = None,
+        bias: bool | None = None
+    ) -> tuple[nn.Linear, nn.Linear, nn.Linear, nn.Linear]:
         """Create standard Q, K, V, and output projection layers.
         
         This helper method creates the standard linear projection layers used by most
@@ -147,7 +147,9 @@ class BaseSelfAttention(nn.Module, ABC):
         w_o = nn.Linear(self.d_model, o_dim, bias=bias)
         
         return w_q, w_k, w_v, w_o
-    def apply_rope(self, query: torch.Tensor, key: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def apply_rope(
+        self, query: torch.Tensor, key: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply Rotary Position Embedding (RoPE) to query and key tensors.
         
         Args:
@@ -178,7 +180,7 @@ class BaseSelfAttention(nn.Module, ABC):
         d_head: int, 
         device: torch.device, 
         dtype: torch.dtype
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Get or compute RoPE frequency tensors.
         
         Args:
@@ -261,9 +263,9 @@ class BaseSelfAttention(nn.Module, ABC):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass for self-attention.
         
         Args:
@@ -291,7 +293,7 @@ class BaseSelfAttention(nn.Module, ABC):
             )
         return self.attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary for serialization.
         Returns:
             Configuration dictionary

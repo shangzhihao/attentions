@@ -1,8 +1,8 @@
-from typing import Dict, Any, Optional, Tuple
+import math
+from typing import Any
 
 import torch
 import torch.nn as nn
-import math
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
 from .utils import reshape_for_attention, reshape_from_attention
@@ -32,7 +32,7 @@ class AlibiSelfAttention(BaseSelfAttention):
         self,
         d_model: int,
         num_heads: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
@@ -72,12 +72,12 @@ class AlibiSelfAttention(BaseSelfAttention):
         Returns:
             Tensor of slopes [num_heads] where each slope is 1/(2^(8/n))^head_idx
         """
-        def get_slopes_power_of_2(n):
+        def get_slopes_power_of_2(n: int) -> list[float]:
             start = 2 ** (-(2 ** -(math.log2(n) - 3)))
             ratio = start
             return [start * (ratio ** i) for i in range(n)]
         
-        def get_slopes(n):
+        def get_slopes(n: int) -> list[float]:
             if math.log2(n).is_integer():
                 return get_slopes_power_of_2(n)
             else:
@@ -104,7 +104,8 @@ class AlibiSelfAttention(BaseSelfAttention):
         distances = torch.abs(positions.T - positions)  # [max_seq_len, max_seq_len]
         
         # Apply slopes to distances: bias = -slope * distance
-        bias = -self.slopes.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)
+        slopes_tensor = torch.as_tensor(self.slopes)  # Access the tensor properly
+        bias = -slopes_tensor.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)
         
         return bias  # [num_heads, max_seq_len, max_seq_len]
     
@@ -118,20 +119,24 @@ class AlibiSelfAttention(BaseSelfAttention):
             Bias tensor [num_heads, seq_len, seq_len]
         """
         if seq_len <= self.max_seq_len:
-            return self.alibi_bias[:, :seq_len, :seq_len]
+            alibi_bias_tensor = torch.as_tensor(self.alibi_bias)  # Access tensor properly
+            return alibi_bias_tensor[:, :seq_len, :seq_len]
         else:
             # Compute bias on-the-fly for longer sequences
-            positions = torch.arange(seq_len, device=self.alibi_bias.device).unsqueeze(0)
+            alibi_bias_tensor = torch.as_tensor(self.alibi_bias)  # Access tensor properly
+            device = alibi_bias_tensor.device
+            positions = torch.arange(seq_len, device=device).unsqueeze(0)
             distances = torch.abs(positions.T - positions)
-            bias = -self.slopes.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)
+            slopes_tensor = torch.as_tensor(self.slopes)  # Access tensor properly
+            bias = -slopes_tensor.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)
             return bias
     
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of ALiBi multi-head self-attention.
         
         Args:
@@ -152,15 +157,15 @@ class AlibiSelfAttention(BaseSelfAttention):
         v = self.w_v(x)  # [batch_size, seq_len, d_model]
         
         # Reshape for multi-head attention
-        q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-        k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-        v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+        q = reshape_for_attention(q, self.num_heads, self.d_head)
+        k = reshape_for_attention(k, self.num_heads, self.d_head)
+        v = reshape_for_attention(v, self.num_heads, self.d_head)
         
         # Get ALiBi bias for current sequence length
         alibi_bias = self._get_alibi_bias_for_length(seq_len)  # [num_heads, seq_len, seq_len]
         
         # Expand ALiBi bias for batch dimension
-        alibi_bias = alibi_bias.unsqueeze(0).expand(batch_size, -1, -1, -1)  # [batch_size, num_heads, seq_len, seq_len]
+        alibi_bias = alibi_bias.unsqueeze(0).expand(batch_size, -1, -1, -1)
         
         # Combine ALiBi bias with user-provided mask if given
         if mask is not None:
@@ -197,7 +202,7 @@ class AlibiSelfAttention(BaseSelfAttention):
         return output, attention_weights
 
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({

@@ -1,11 +1,11 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
-from .utils import reshape_for_attention, reshape_from_attention
 from .masks import create_dilated_mask
+from .utils import reshape_for_attention, reshape_from_attention
 
 
 class DilatedSelfAttention(BaseSelfAttention):
@@ -33,7 +33,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         d_model: int,
         dilation_rate: int = 2,
         num_heads: int = 1,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
@@ -66,9 +66,9 @@ class DilatedSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of dilated self-attention.
         
         Args:
@@ -147,7 +147,7 @@ class DilatedSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({

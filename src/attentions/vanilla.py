@@ -1,9 +1,10 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
-import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
+
+
 class VanillaSelfAttention(BaseSelfAttention):
     """Vanilla self-attention implementation.
     
@@ -21,7 +22,7 @@ class VanillaSelfAttention(BaseSelfAttention):
     def __init__(
         self,
         d_model: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
@@ -39,9 +40,9 @@ class VanillaSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of vanilla self-attention.
         
         Args:
@@ -75,7 +76,7 @@ class VanillaSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config["temperature"] = self.temperature

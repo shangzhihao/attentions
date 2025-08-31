@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -31,7 +31,7 @@ class GroupedSelfAttention(BaseSelfAttention):
         d_model: int,
         num_query_heads: int,
         num_kv_heads: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
@@ -107,9 +107,9 @@ class GroupedSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of grouped self-attention.
         
         Args:
@@ -168,7 +168,7 @@ class GroupedSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({

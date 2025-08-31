@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -35,7 +35,7 @@ class BlockSelfAttention(BaseSelfAttention):
     def __init__(
         self,
         d_model: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         block_size: int = 64,
         num_heads: int = 8,
         dropout: float = 0.1,
@@ -72,8 +72,8 @@ class BlockSelfAttention(BaseSelfAttention):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Apply block-wise multi-head attention.
         
         Args:
@@ -97,7 +97,7 @@ class BlockSelfAttention(BaseSelfAttention):
         attention_weights = torch.zeros(batch_size, num_heads, seq_len, seq_len, device=device, dtype=query.dtype)
         
         # Process each block
-        for i, (start, end) in enumerate(zip(block_starts, block_ends)):
+        for i, (start, end) in enumerate(zip(block_starts, block_ends, strict=False)):
             start_idx, end_idx = start.item(), end.item()
             block_len = end_idx - start_idx
             
@@ -163,9 +163,9 @@ class BlockSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of block-wise multi-head self-attention.
         
         Args:
@@ -238,7 +238,7 @@ class BlockSelfAttention(BaseSelfAttention):
         seq_len: int,
         block_size: int,
         overlap: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Create block start and end indices for block-wise attention.
         
         Args:
@@ -273,7 +273,7 @@ class BlockSelfAttention(BaseSelfAttention):
         
         return torch.tensor(block_starts), torch.tensor(block_ends)
 
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({

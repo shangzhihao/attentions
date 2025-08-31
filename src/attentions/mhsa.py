@@ -1,7 +1,6 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any
 
 import torch
-import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
 from .utils import reshape_for_attention, reshape_from_attention
@@ -28,7 +27,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         self,
         d_model: int,
         num_heads: int,
-        input_dim: Optional[int] = None,
+        input_dim: int | None = None,
         dropout: float = 0.1,
         bias: bool = False,
         temperature: float = 1.0,
@@ -53,9 +52,9 @@ class MultiHeadSelfAttention(BaseSelfAttention):
     def forward(
         self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        mask: torch.Tensor | None = None,
+        **kwargs: Any
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass of multi-head self-attention.
         
         Args:
@@ -76,9 +75,9 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         v = self.w_v(x)  # [batch_size, seq_len, d_model]
         
         # Reshape for multi-head attention
-        q = reshape_for_attention(q, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-        k = reshape_for_attention(k, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
-        v = reshape_for_attention(v, self.num_heads, self.d_head)  # [batch_size, num_heads, seq_len, d_head]
+        q = reshape_for_attention(q, self.num_heads, self.d_head)
+        k = reshape_for_attention(k, self.num_heads, self.d_head)
+        v = reshape_for_attention(v, self.num_heads, self.d_head)
         
         # Apply RoPE if enabled
         if self.rope:
@@ -110,7 +109,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
         
         return output, attention_weights
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict[str, Any]:
         """Get configuration dictionary."""
         config = super().get_config()
         config.update({
@@ -123,4 +122,7 @@ class MultiHeadSelfAttention(BaseSelfAttention):
     def extra_repr(self) -> str:
         """Extra representation for debugging."""
         base_repr = super().extra_repr()
-        return f"{base_repr}, num_heads={self.num_heads}, d_head={self.d_head}, temperature={self.temperature}"
+        return (
+            f"{base_repr}, num_heads={self.num_heads}, d_head={self.d_head}, "
+            f"temperature={self.temperature}"
+        )
