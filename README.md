@@ -13,9 +13,9 @@ A modern, extensible PyTorch library for attention mechanisms in transformer mod
 | **Local Self-Attention** | `LocalSelfAttention` | Windowed attention with configurable window size | Long sequences, O(n×w) complexity |
 | **Grouped Self-Attention** | `GroupedSelfAttention` | Memory-efficient attention with shared K,V heads | Efficient transformers (GQA/MQA) |
 | **Dilated Self-Attention** | `DilatedSelfAttention` | Sparse attention with dilation patterns | Structured sequences, long-range deps |
-| **Linear Attention** | Linear complexity attention using kernel methods | O(n) complexity for very long sequences |
-| **Block Attention** | Block-wise sparse attention patterns | Hierarchical attention, document modeling |
-| **Alibi Attention** | Attention with linear bias for positions | Length extrapolation capabilities |
+| **Linear Self-Attention** | `LinearSelfAttention` | Linear complexity attention using kernel methods | O(n) complexity for very long sequences |
+| **Block Self-Attention** | `BlockSelfAttention` | Block-wise sparse attention patterns | Hierarchical attention, document modeling |
+| **ALiBi Self-Attention** | `ALiBiSelfAttention` | Attention with linear bias for positions | Length extrapolation capabilities |
 
 ## 🚀 Quick Start
 
@@ -104,8 +104,11 @@ masked_output, masked_weights = multi_head_attn(x, mask=causal_mask)
 | Local | O(n×w) | O(n×w) | Long sequences with local patterns |
 | Grouped | O(n²) | O(n²/g) | Memory-constrained scenarios |
 | Dilated | O(n×d) | O(n×d) | Structured/periodic patterns |
+| Linear | O(n) | O(n) | Very long sequences (> 4K tokens) |
+| Block | O(b×(n/b)²) | O(b×(n/b)²) | Memory-efficient long sequences |
+| ALiBi | O(n²) | O(n²) | Length extrapolation tasks |
 
-*Where n=sequence length, w=window size, g=group ratio, d=dilation connections*
+*Where n=sequence length, w=window size, g=group ratio, d=dilation connections, b=number of blocks*
 
 ## 📄 License
 
