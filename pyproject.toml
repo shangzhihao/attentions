@@ -5,6 +5,7 @@ description = "Modern PyTorch library for attention mechanisms in transformer mo
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "numpy>=2.3.2",
     "torch>=2.8.0",
 ]
 
@@ -13,8 +14,8 @@ dev = [
     "pytest>=8.4.1",
     "mypy>=1.17.1",
     "ruff>=0.12.10",
-    "black>=22.0.0",
-    "isort>=6.0.1",
+    "build>=1.3.0",
+    "twine>=6.2.0",
 ]
 
 [build-system]
@@ -47,7 +48,76 @@ strict_optional = true
 # allow missing type hints in 3rd-party libs
 ignore_missing_imports = true
 
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-lint.select = ["E", "F", "I", "UP", "B"]
+[tool.ruff.lint]
+# Enable specific rule categories
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes (unused imports, undefined names, etc.)
+    "I",      # isort (import sorting)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade (modernize Python code)
+    "B",      # flake8-bugbear (likely bugs and design problems)
+    "A",      # flake8-builtins (builtin shadowing)
+    "C4",     # flake8-comprehensions
+    "T20",    # flake8-print (print statements)
+    "SIM",    # flake8-simplify
+    "RUF",    # Ruff-specific rules
+    
+    # Additional static analysis rules
+    "S",      # flake8-bandit (security issues)
+    "BLE",    # flake8-blind-except (bare except clauses)
+    "FBT",    # flake8-boolean-trap (boolean traps)
+    "C90",    # mccabe (complexity analysis)
+    "ERA",    # eradicate (commented-out code)
+    "PL",     # Pylint (comprehensive static analysis)
+    "TRY",    # tryceratops (exception handling)
+    "PERF",   # Perflint (performance anti-patterns)
+    "FURB",   # refurb (modernize and improve code)
+]
+
+# Ignore specific rules that might be too strict for this educational project
+ignore = [
+    "T20",    # Allow print statements
+    "E501",   # Line too long (handled by line-length setting)
+    "N803",   # Argument name should be lowercase (allow ML conventions)
+    "N806",   # Variable in function should be lowercase (allow ML conventions)
+    "PLR0402",  # Allow torch.nn as nn style imports (PyTorch convention)
+    "FBT002", # Allow boolean default arguments (common in ML)
+    "PLR0913", # Allow many arguments in functions (ML models need many params)
+]
+
+# Allow autofix for specific rules
+fixable = [
+    "F401",   # Remove unused imports
+    "I001",   # Sort imports
+    "UP",     # Apply pyupgrade fixes
+]
+
+# Never autofix these (they might change behavior)
+unfixable = [
+    "B",      # Don't autofix potential bugs
+    "F841",   # Don't remove unused variables (might be intentional)
+]
+
+[tool.ruff.lint.isort]
+# Configure import sorting
+known-first-party = ["config", "data_util", "models", "pretrain", "finetune", "inference"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.lint.mccabe]
+# Complexity threshold
+max-complexity = 5
+
+[tool.ruff.format]
+# Configure code formatting
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# Additional formatting options for better consistency
+docstring-code-format = true      # Format code blocks in docstrings
+docstring-code-line-length = 60   # Shorter lines in docstring code blocks
+preview = false                   # Use stable formatting rules only
