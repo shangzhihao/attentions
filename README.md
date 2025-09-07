@@ -37,6 +37,21 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
+### Install from TestPyPI
+
+You can try pre-releases from TestPyPI:
+
+```bash
+python -m pip install \
+  --index-url https://test.pypi.org/simple \
+  --extra-index-url https://pypi.org/simple \
+  attentions
+```
+
+Notes:
+- The extra index ensures dependencies like `torch` resolve from PyPI.
+- If you already installed a previous version, add `--upgrade`.
+
 ### Basic Usage
 
 ```python
