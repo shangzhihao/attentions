@@ -90,14 +90,14 @@ x = torch.randn(batch_size, seq_len, d_model)
 # Forward pass (same API for all mechanisms)
 output, attention_weights = vanilla_attn(x)
 print(f"Output shape: {output.shape}")  # [4, 512, 128]
-print(f"Attention weights shape: {attention_weights.shape}")  # [4, 1, 512, 512]
+print(f"Attention weights shape: {attention_weights.shape}")  # [4, 512, 512]
 
 # Multi-head attention
 output, weights = multi_head_attn(x)
 print(f"Multi-head weights shape: {weights.shape}")  # [4, 8, 512, 512]
 
-# Using attention masks
-causal_mask = torch.tril(torch.ones(seq_len, seq_len))
+# Using attention masks (boolean causal)
+causal_mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
 masked_output, masked_weights = multi_head_attn(x, mask=causal_mask)
 ```
 

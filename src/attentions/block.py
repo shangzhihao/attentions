@@ -139,7 +139,9 @@ class BlockSelfAttention(BaseSelfAttention):
                     output_end_in_block = output_start_in_block + overlap_len
                     
                     # Weight by position in block (linear interpolation)
-                    alpha = torch.linspace(0.0, 1.0, int(overlap_len), device=device).view(1, 1, -1, 1)
+                    alpha = torch.linspace(
+                        0.0, 1.0, int(overlap_len), device=device,
+                    dtype=query.dtype).view(1, 1, -1, 1)
                     
                     output[:, :, overlap_start:end_idx, :] = (
                         (1 - alpha) * output[:, :, overlap_start:end_idx, :] +
