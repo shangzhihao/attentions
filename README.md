@@ -16,12 +16,9 @@ A modern, extensible PyTorch library for attention mechanisms in transformer mod
 | **Linear Self-Attention** | `LinearSelfAttention` | Linear complexity attention using kernel methods | O(n) complexity for very long sequences |
 | **Block Self-Attention** | `BlockSelfAttention` | Block-wise sparse attention patterns | Hierarchical attention, document modeling |
 | **ALiBi Self-Attention** | `ALiBiSelfAttention` | Attention with linear bias for positions | Length extrapolation capabilities |
-
-### 🚧 Planned Implementations
-
-| Mechanism | Description | Benefits |
-|-----------|-------------|----------|
-| **Rotary Position** | Attention with rotary positional embeddings | Better positional understanding |
+| **LSH Self-Attention** | `LSHSelfAttention` | Hash-based bucketed attention within buckets | Approximate global attention for long sequences |
+| **Gated Self-Attention (Residual)** | `GatedSelfAttention` | Highway-style gate mixing attention output with the input | Learnable residual strength per token |
+| **Combined Attention (Mixture)** | `CombinedAttention` | Learned gate mixes outputs of two attention modules | Softly combine local/global or different patterns |
 
 ## 🚀 Quick Start
 
@@ -56,64 +53,20 @@ Notes:
 
 ```python
 import torch
-from attentions import (
-    VanillaSelfAttention,
-    MultiHeadSelfAttention,
-    LocalSelfAttention,
-    GroupedSelfAttention,
-    DilatedSelfAttention
-)
+from attentions import MultiHeadSelfAttention
 
-# Initialize different attention mechanisms
+# Initialize model and input
 d_model = 128
 seq_len = 512
 batch_size = 4
 
-# Vanilla Self-Attention
-vanilla_attn = VanillaSelfAttention(d_model=d_model)
-
-# Multi-Head Self-Attention
-multi_head_attn = MultiHeadSelfAttention(
-    d_model=d_model,
-    num_heads=8
-)
-
-# Local Self-Attention (for long sequences)
-local_attn = LocalSelfAttention(
-    d_model=d_model,
-    window_size=64,
-    num_heads=8
-)
-
-# Grouped Self-Attention (memory efficient)
-grouped_attn = GroupedSelfAttention(
-    d_model=d_model,
-    num_query_heads=8,
-    num_kv_heads=2  # Shared K,V heads for efficiency
-)
-
-# Dilated Self-Attention (sparse patterns)
-dilated_attn = DilatedSelfAttention(
-    d_model=d_model,
-    dilation_rate=4,
-    num_heads=8
-)
-
-# Create input tensor
+attn = MultiHeadSelfAttention(d_model=d_model, num_heads=8)
 x = torch.randn(batch_size, seq_len, d_model)
 
-# Forward pass (same API for all mechanisms)
-output, attention_weights = vanilla_attn(x)
-print(f"Output shape: {output.shape}")  # [4, 512, 128]
-print(f"Attention weights shape: {attention_weights.shape}")  # [4, 512, 512]
-
-# Multi-head attention
-output, weights = multi_head_attn(x)
-print(f"Multi-head weights shape: {weights.shape}")  # [4, 8, 512, 512]
-
-# Using attention masks (boolean causal)
-causal_mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
-masked_output, masked_weights = multi_head_attn(x, mask=causal_mask)
+# Forward pass
+out, weights = attn(x)
+print(out.shape)     # [4, 512, 128]
+print(weights.shape) # [4, 8, 512, 512]
 ```
 
 ## 📊 Performance Comparison
@@ -128,6 +81,7 @@ masked_output, masked_weights = multi_head_attn(x, mask=causal_mask)
 | Linear | O(n) | O(n) | Very long sequences (> 4K tokens) |
 | Block | O(b×(n/b)²) | O(b×(n/b)²) | Memory-efficient long sequences |
 | ALiBi | O(n²) | O(n²) | Length extrapolation tasks |
+| LSH | Sub-quadratic (~O(n×w×h)) | Sub-quadratic | Approximate long-range attention |
 
 *Where n=sequence length, w=window size, g=group ratio, d=dilation connections, b=number of blocks*
 
