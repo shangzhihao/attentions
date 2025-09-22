@@ -12,6 +12,7 @@ from .group import GroupedSelfAttention
 from .linear import LinearSelfAttention
 from .local import LocalSelfAttention
 from .longformer import LongformerSelfAttention
+from .lsh import LSHSelfAttention
 from .masks import (
                     combine_masks,
                     create_block_mask,
@@ -35,6 +36,7 @@ __all__ = [
     "MultiHeadSelfAttention",
     "LocalSelfAttention",
     "LongformerSelfAttention",
+    "LSHSelfAttention",
     "GroupedSelfAttention",
     "DilatedSelfAttention",
     "LinearSelfAttention",
