@@ -73,21 +73,43 @@ class AlibiSelfAttention(BaseSelfAttention):
             Tensor of slopes [num_heads] where each slope is 1/(2^(8/n))^head_idx
         """
         def get_slopes_power_of_2(n: int) -> list[float]:
+            """Generate slopes for powers of 2."""
             start = 2 ** (-(2 ** -(math.log2(n) - 3)))
             ratio = start
             return [start * (ratio ** i) for i in range(n)]
         
         def get_slopes(n: int) -> list[float]:
-            if math.log2(n).is_integer():
+            """Generate slopes for any number of heads."""
+            if n == 0:
+                return []
+            elif n == 1:
+                return [1.0]
+            elif math.log2(n).is_integer():
                 return get_slopes_power_of_2(n)
             else:
                 closest_power_of_2 = 2 ** math.floor(math.log2(n))
-                return (
-                    get_slopes_power_of_2(closest_power_of_2)
-                    + get_slopes(2 * closest_power_of_2)[0::2][: n - closest_power_of_2]
-                )
+                # Get slopes for the closest power of 2
+                slopes_power_of_2 = get_slopes_power_of_2(closest_power_of_2)
+                # Get additional slopes for the remaining heads
+                remaining_heads = n - closest_power_of_2
+                if remaining_heads > 0:
+                    # Generate slopes for 2 * closest_power_of_2 and take every other one
+                    extended_slopes = get_slopes_power_of_2(2 * closest_power_of_2)
+                    additional_slopes = extended_slopes[1::2][:remaining_heads]  # Take odd indices
+                    return slopes_power_of_2 + additional_slopes
+                else:
+                    return slopes_power_of_2
         
         slopes = get_slopes(num_heads)
+        
+        # Validate slopes
+        if len(slopes) != num_heads:
+            raise ValueError(f"Expected {num_heads} slopes, got {len(slopes)}")
+        
+        # Ensure all slopes are positive
+        if any(s <= 0 for s in slopes):
+            raise ValueError("All ALiBi slopes must be positive")
+        
         return torch.tensor(slopes, dtype=torch.float32)
     
     def _create_alibi_bias(self, max_seq_len: int) -> torch.Tensor:
@@ -104,8 +126,8 @@ class AlibiSelfAttention(BaseSelfAttention):
         distances = torch.abs(positions.T - positions)  # [max_seq_len, max_seq_len]
         
         # Apply slopes to distances: bias = -slope * distance
-        slopes_tensor = torch.as_tensor(self.slopes)  # Access the tensor properly
-        bias = -slopes_tensor.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)
+        # self.slopes is already a tensor, no need for torch.as_tensor
+        bias = -self.slopes.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)  # type: ignore
         
         return bias  # [num_heads, max_seq_len, max_seq_len]
     
@@ -119,16 +141,26 @@ class AlibiSelfAttention(BaseSelfAttention):
             Bias tensor [num_heads, seq_len, seq_len]
         """
         if seq_len <= self.max_seq_len:
-            alibi_bias_tensor = torch.as_tensor(self.alibi_bias)  # Access tensor properly
-            return alibi_bias_tensor[:, :seq_len, :seq_len]
+            # Access the registered buffer tensor
+            bias_tensor = self.alibi_bias  # type: ignore
+            return bias_tensor[:, :seq_len, :seq_len]  # type: ignore
         else:
             # Compute bias on-the-fly for longer sequences
-            alibi_bias_tensor = torch.as_tensor(self.alibi_bias)  # Access tensor properly
-            device = alibi_bias_tensor.device
-            positions = torch.arange(seq_len, device=device).unsqueeze(0)
-            distances = torch.abs(positions.T - positions)
-            slopes_tensor = torch.as_tensor(self.slopes)  # Access tensor properly
-            bias = -slopes_tensor.unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)
+            # More memory-efficient approach for very long sequences
+            bias_tensor = self.alibi_bias  # type: ignore
+            slopes_tensor = self.slopes  # type: ignore
+            device = bias_tensor.device
+            dtype = bias_tensor.dtype
+            
+            # Create position indices
+            positions = torch.arange(seq_len, device=device, dtype=dtype)  # type: ignore
+            # Compute distance matrix efficiently
+            positions_i = positions.unsqueeze(0)  # [1, seq_len]
+            positions_j = positions.unsqueeze(1)  # [seq_len, 1]
+            distances = torch.abs(positions_i - positions_j)  # [seq_len, seq_len]
+            
+            # Apply slopes: bias = -slope * distance
+            bias = -slopes_tensor.to(device=device, dtype=dtype).unsqueeze(-1).unsqueeze(-1) * distances.unsqueeze(0)  # type: ignore
             return bias
     
     def forward(
@@ -163,6 +195,9 @@ class AlibiSelfAttention(BaseSelfAttention):
         
         # Get ALiBi bias for current sequence length
         alibi_bias = self._get_alibi_bias_for_length(seq_len)  # [num_heads, seq_len, seq_len]
+        
+        # Ensure alibi_bias is on the same device as input
+        alibi_bias = alibi_bias.to(device=x.device, dtype=x.dtype)
         
         # Expand ALiBi bias for batch dimension
         alibi_bias = alibi_bias.unsqueeze(0).expand(batch_size, -1, -1, -1)
