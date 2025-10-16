@@ -1,0 +1,46 @@
+default_language_version:
+  python: python3.12
+
+repos:
+  # 1) Core sanity checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: debug-statements
+
+  # 2) Ruff — lint + import sort (I) + fixes
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.5
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+  # 3) type check
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        args:
+          - --show-error-codes
+          - --config-file=pyproject.toml
+        additional_dependencies:
+          - pandas-stubs>=2.3.0
+          - pydantic>=2.11.9
+          - numpy>=2.3.3
+
+  # 4) smoke tests
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (selected checks)
+        entry: uv run -m pytest --maxfail=1 --disable-warnings -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

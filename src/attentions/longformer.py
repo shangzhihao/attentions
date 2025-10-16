@@ -8,6 +8,13 @@ from .masks import create_local_mask
 from .utils import reshape_for_attention, reshape_from_attention
 
 
+GLOBAL_ATTENTION_RANK_SEQUENCE = 1
+GLOBAL_ATTENTION_RANK_BATCH = 2
+MASK_DIM_SEQUENCE = 2
+MASK_DIM_BATCH = 3
+MASK_DIM_BATCH_HEAD = 4
+
+
 class LongformerSelfAttention(BaseSelfAttention):
     """Longformer-style sliding window self-attention with optional global tokens.
 
@@ -41,18 +48,21 @@ class LongformerSelfAttention(BaseSelfAttention):
         input_dim: int | None = None,
         window_size: int = 512,
         dropout: float = 0.1,
+        *,
         bias: bool = False,
         temperature: float = 1.0,
         rope: bool = False,
     ):
         if window_size <= 0:
-            raise ValueError(f"window_size must be positive, got {window_size}")
+            message = f"window_size must be positive, got {window_size}"
+            raise ValueError(message)
         if d_model % num_heads != 0:
-            raise ValueError(
+            message = (
                 f"d_model ({d_model}) must be divisible by num_heads ({num_heads})"
             )
+            raise ValueError(message)
 
-        super().__init__(d_model, input_dim, dropout, bias, rope)
+        super().__init__(d_model, input_dim, dropout, bias=bias, rope=rope)
 
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
@@ -75,61 +85,93 @@ class LongformerSelfAttention(BaseSelfAttention):
         base_mask: torch.Tensor | None,
         global_attention: torch.Tensor | None,
     ) -> torch.Tensor | None:
-        """Create a combined Longformer attention mask expanded to heads.
+        """Create a combined Longformer attention mask expanded to heads."""
+        long_mask = self._create_local_mask(batch_size, seq_len, device)
+        long_mask = self._apply_global_attention(
+            long_mask, global_attention, batch_size, seq_len
+        )
+        return self._merge_with_base_mask(
+            long_mask, base_mask, batch_size, seq_len, device
+        )
 
-        Returns a boolean mask of shape [batch, num_heads, seq, seq] where
-        True means attend and False means masked out. If both a base mask and
-        global mask are provided, the result respects both (logical AND with
-        the base mask).
-        """
-        # Start with sliding-window local mask
+    def _create_local_mask(
+        self, batch_size: int, seq_len: int, device: torch.device
+    ) -> torch.Tensor:
         local = create_local_mask(seq_len, self.window_size, device)
-        long_mask = local.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1)
+        return (
+            local.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1)
+        )
 
-        # Apply global attention if provided
-        if global_attention is not None:
-            if global_attention.dim() == 1:
-                g = global_attention.unsqueeze(0).expand(batch_size, -1)
-            elif global_attention.dim() == 2:
-                g = global_attention
-            else:
-                raise ValueError("global_attention must be [seq] or [batch, seq] boolean mask")
-            if g.dtype != torch.bool:
-                g = g.bool()
-
-            # For each batch, for global indices j:
-            # - allow all i to attend to j (set column j True)
-            # - allow j to attend to all (set row j True)
-            # Vectorized updates
-            # Columns: broadcast g over row dimension
-            # long_mask[b, h, :, j] = True where g[b, j] is True
-            g_cols = g.view(batch_size, 1, 1, seq_len).expand(-1, self.num_heads, seq_len, -1)
-            long_mask = long_mask | g_cols
-
-            # Rows: broadcast g over column dimension
-            # long_mask[b, h, j, :] = True where g[b, j] is True
-            g_rows = g.view(batch_size, 1, seq_len, 1).expand(-1, self.num_heads, -1, seq_len)
-            long_mask = long_mask | g_rows
-
-        if base_mask is None:
+    def _apply_global_attention(
+        self,
+        long_mask: torch.Tensor,
+        global_attention: torch.Tensor | None,
+        batch_size: int,
+        seq_len: int,
+    ) -> torch.Tensor:
+        if global_attention is None:
             return long_mask
 
-        # Combine with user-provided mask
-        if base_mask.dim() == 2:
-            base_exp = base_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, self.num_heads, -1, -1)
-        elif base_mask.dim() == 3:
-            base_exp = base_mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
-        elif base_mask.dim() == 4:
-            base_exp = base_mask
-        else:
-            raise ValueError("mask must be 2D/3D/4D tensor")
+        normalized = self._normalize_global_attention(
+            global_attention, batch_size, seq_len
+        )
+        g_bool = normalized.bool()
+        g_cols = g_bool.view(batch_size, 1, 1, seq_len).expand(
+            -1, self.num_heads, seq_len, -1
+        )
+        g_rows = g_bool.view(batch_size, 1, seq_len, 1).expand(
+            -1, self.num_heads, -1, seq_len
+        )
+        return long_mask | g_cols | g_rows
 
-        if base_exp.dtype == torch.bool:
-            return long_mask & base_exp
-        else:
-            # Convert longformer mask to additive, then add
-            add_long = torch.where(long_mask, 0.0, float("-inf")).to(base_exp.dtype).to(base_exp.device)
-            return add_long + base_exp
+    def _normalize_global_attention(
+        self,
+        global_attention: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+    ) -> torch.Tensor:
+        if global_attention.dim() == GLOBAL_ATTENTION_RANK_SEQUENCE:
+            return global_attention.unsqueeze(0).expand(batch_size, -1)
+        if global_attention.dim() == GLOBAL_ATTENTION_RANK_BATCH:
+            return global_attention
+        message = "global_attention must be [seq] or [batch, seq] boolean mask"
+        raise ValueError(message)
+
+    def _merge_with_base_mask(
+        self,
+        long_mask: torch.Tensor,
+        base_mask: torch.Tensor | None,
+        batch_size: int,
+        seq_len: int,
+        device: torch.device,
+    ) -> torch.Tensor | None:
+        if base_mask is None:
+            return long_mask
+        expanded = self._expand_base_mask(base_mask, batch_size, seq_len)
+        if expanded.dtype == torch.bool:
+            return long_mask & expanded
+        additive_long = torch.where(
+            long_mask,
+            torch.tensor(0.0, device=device, dtype=expanded.dtype),
+            torch.tensor(float("-inf"), device=device, dtype=expanded.dtype),
+        )
+        return additive_long + expanded
+
+    def _expand_base_mask(
+        self, base_mask: torch.Tensor, batch_size: int, seq_len: int
+    ) -> torch.Tensor:
+        if base_mask.dim() == MASK_DIM_SEQUENCE:
+            return (
+                base_mask.unsqueeze(0)
+                .unsqueeze(0)
+                .expand(batch_size, self.num_heads, -1, -1)
+            )
+        if base_mask.dim() == MASK_DIM_BATCH:
+            return base_mask.unsqueeze(1).expand(-1, self.num_heads, -1, -1)
+        if base_mask.dim() == MASK_DIM_BATCH_HEAD:
+            return base_mask
+        message = "mask must be 2D/3D/4D tensor"
+        raise ValueError(message)
 
     def forward(
         self,
@@ -165,7 +207,12 @@ class LongformerSelfAttention(BaseSelfAttention):
 
         # Compute attention
         attn_out, attn_weights = scaled_dot_product_attention(
-            q, k, v, mask=combined_mask, dropout=self.dropout, temperature=self.temperature
+            q,
+            k,
+            v,
+            mask=combined_mask,
+            dropout=self.dropout,
+            temperature=self.temperature,
         )
 
         # Back to [batch, seq, d_model]
@@ -192,4 +239,3 @@ class LongformerSelfAttention(BaseSelfAttention):
     def extra_repr(self) -> str:
         base = super().extra_repr()
         return f"{base}, num_heads={self.num_heads}, d_head={self.d_head}, window_size={self.window_size}, temperature={self.temperature}"
-

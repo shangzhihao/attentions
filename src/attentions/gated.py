@@ -6,10 +6,34 @@ import torch.nn as nn
 from .base import BaseSelfAttention
 
 
+MULTI_HEAD_RANK = 4
+
+
+def _make_gate(
+    input_dim: int,
+    *,
+    gate_hidden: int | None,
+    gate_bias: bool,
+    dropout: float,
+) -> nn.Sequential:
+    if gate_hidden is None:
+        return nn.Sequential(
+            nn.Linear(input_dim, 1, bias=gate_bias),
+            nn.Sigmoid(),
+        )
+    return nn.Sequential(
+        nn.Linear(input_dim, gate_hidden, bias=gate_bias),
+        nn.GELU(),
+        nn.Dropout(dropout),
+        nn.Linear(gate_hidden, 1, bias=gate_bias),
+        nn.Sigmoid(),
+    )
+
+
 class GatedSelfAttention(nn.Module):
     """Residual-gated self-attention (highway-style gate).
 
-    x̂ = g ⊙ Attn(x) + (1 − g) ⊙ Proj(x), with g = sigmoid(G(x)).
+    x̂ = g ⊙ Attn(x) + (1 - g) ⊙ Proj(x), with g = sigmoid(G(x)).
 
     If the input dimension differs from the attention's ``d_model``, an internal
     projection aligns ``x`` to ``d_model`` before mixing.
@@ -61,7 +85,7 @@ class GatedSelfAttention(nn.Module):
         y = gate * attn_out + (1.0 - gate) * x_res
 
         # Store convenient head-averaged weights
-        if attn_w.dim() == 4:
+        if attn_w.dim() == MULTI_HEAD_RANK:
             self.attention_weights = attn_w.mean(dim=1).detach()
         else:
             self.attention_weights = attn_w.detach()
@@ -70,9 +94,8 @@ class GatedSelfAttention(nn.Module):
 
     def get_attention_weights(self) -> torch.Tensor:
         if self.attention_weights is None:
-            raise RuntimeError(
-                "No attention weights available. Perform a forward pass first."
-            )
+            message = "No attention weights available. Perform a forward pass first."
+            raise RuntimeError(message)
         return self.attention_weights
 
     def get_config(self) -> dict[str, Any]:
