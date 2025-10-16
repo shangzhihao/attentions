@@ -63,7 +63,7 @@ select = [
     "T20",    # flake8-print (print statements)
     "SIM",    # flake8-simplify
     "RUF",    # Ruff-specific rules
-    
+
     # Additional static analysis rules
     "S",      # flake8-bandit (security issues)
     "BLE",    # flake8-blind-except (bare except clauses)
@@ -85,6 +85,13 @@ ignore = [
     "PLR0402",  # Allow torch.nn as nn style imports (PyTorch convention)
     "FBT002", # Allow boolean default arguments (common in ML)
     "PLR0913", # Allow many arguments in functions (ML models need many params)
+    "SIM108", # Allow use of `len(x) == 0` (more readable in some cases)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",  # Allow bare asserts in test suites
+    "PLR2004",  # Allow use magic numbers in tests
 ]
 
 # Allow autofix for specific rules

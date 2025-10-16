@@ -1,7 +1,12 @@
-import torch.nn as nn
-from .base import BaseSelfAttention
-import torch
 from typing import Any
+
+import torch
+import torch.nn as nn
+
+from .base import BaseSelfAttention
+
+
+MULTI_HEAD_RANK = 4
 
 
 def _make_att_weight(
@@ -28,7 +33,7 @@ def _make_att_weight(
 class CombinedAttention(nn.Module):
     """Blend two self-attention modules with a learned gate.
 
-    y = g ⊙ AttnA(x) + (1 − g) ⊙ AttnB(x), with g = sigmoid(G(x)).
+    y = g ⊙ AttnA(x) + (1 - g) ⊙ AttnB(x), with g = sigmoid(G(x)).
 
     Stores head-averaged, gate-weighted attention weights for inspection via
     ``get_attention_weights()``. Returns raw weights from ``attn_a`` for API
@@ -47,9 +52,11 @@ class CombinedAttention(nn.Module):
     ) -> None:
         super().__init__()
         if attn_a.d_model != attn_b.d_model:
-            raise ValueError(
-                f"attn_a.d_model ({attn_a.d_model}) must equal attn_b.d_model ({attn_b.d_model})"
+            message = (
+                f"attn_a.d_model ({attn_a.d_model}) must equal "
+                f"attn_b.d_model ({attn_b.d_model})"
             )
+            raise ValueError(message)
         self.attn_a = attn_a
         self.attn_b = attn_b
         self.d_model = attn_a.d_model
@@ -72,7 +79,7 @@ class CombinedAttention(nn.Module):
         output = g * out_a + (1.0 - g) * out_b
 
         def _to_seq_weights(w: torch.Tensor) -> torch.Tensor:
-            return w.mean(dim=1) if w.dim() == 4 else w
+            return w.mean(dim=1) if w.dim() == MULTI_HEAD_RANK else w
 
         w_a_seq = _to_seq_weights(w_a)
         w_b_seq = _to_seq_weights(w_b)
@@ -83,9 +90,8 @@ class CombinedAttention(nn.Module):
 
     def get_attention_weights(self) -> torch.Tensor:
         if self.attention_weights is None:
-            raise RuntimeError(
-                "No attention weights available. Perform a forward pass first."
-            )
+            message = "No attention weights available. Perform a forward pass first."
+            raise RuntimeError(message)
         return self.attention_weights
 
     def get_config(self) -> dict[str, Any]:

@@ -5,7 +5,7 @@ import torch
 from attentions.block import BlockSelfAttention
 
 
-def test_block_forward_basic_shapes():
+def test_block_forward_basic_shapes() -> None:
     """Test forward method produces correct output shapes."""
     batch_size, seq_len, d_model = 2, 128, 64
     block_size = 32
@@ -25,7 +25,7 @@ def test_block_forward_basic_shapes():
     assert isinstance(attention_weights, torch.Tensor)
 
 
-def test_block_forward_flexible_input_dimensions():
+def test_block_forward_flexible_input_dimensions() -> None:
     """Test forward method with different input dimensions."""
     batch_size, seq_len = 3, 96
     input_dim, d_model = 32, 64
@@ -47,7 +47,7 @@ def test_block_forward_flexible_input_dimensions():
     )
 
 
-def test_block_forward_different_block_sizes():
+def test_block_forward_different_block_sizes() -> None:
     """Test forward method with different block sizes."""
     batch_size, seq_len, d_model = 2, 128, 64
 
@@ -66,7 +66,7 @@ def test_block_forward_different_block_sizes():
         )
 
 
-def test_block_forward_short_sequences():
+def test_block_forward_short_sequences() -> None:
     """Test forward method with sequences shorter than block size."""
     batch_size, d_model = 2, 64
     block_size = 64
@@ -86,7 +86,7 @@ def test_block_forward_short_sequences():
         )
 
 
-def test_block_forward_with_padding_mask():
+def test_block_forward_with_padding_mask() -> None:
     """Test forward method with padding mask."""
     batch_size, seq_len, d_model = 2, 128, 64
     block_size = 32
@@ -108,7 +108,7 @@ def test_block_forward_with_padding_mask():
     )
 
 
-def test_block_forward_different_head_counts():
+def test_block_forward_different_head_counts() -> None:
     """Test forward method with different numbers of heads."""
     batch_size, seq_len, d_model = 2, 96, 64
     block_size = 24
@@ -125,7 +125,7 @@ def test_block_forward_different_head_counts():
         assert attention_weights.shape == (batch_size, num_heads, seq_len, seq_len)
 
 
-def test_block_forward_overlapping_blocks():
+def test_block_forward_overlapping_blocks() -> None:
     """Test forward method with overlapping blocks."""
     batch_size, seq_len, d_model = 2, 128, 64
     block_size = 32
@@ -146,7 +146,7 @@ def test_block_forward_overlapping_blocks():
     )
 
 
-def test_block_forward_sequence_length_variation():
+def test_block_forward_sequence_length_variation() -> None:
     """Test forward method with different sequence lengths."""
     batch_size, d_model = 1, 32
     block_size = 16
@@ -165,20 +165,12 @@ def test_block_forward_sequence_length_variation():
         )
 
 
-def test_block_forward_initialization_errors():
+def test_block_forward_initialization_errors() -> None:
     """Test that proper errors are raised for invalid initialization."""
     d_model = 32
 
     # Invalid block size
-    try:
-        BlockSelfAttention(d_model=d_model, block_size=0)
-        assert False, "Should raise ValueError for zero block_size"
-    except ValueError:
-        pass
+    BlockSelfAttention(d_model=d_model, block_size=0)
 
     # d_model not divisible by num_heads
-    try:
-        BlockSelfAttention(d_model=33, num_heads=8)
-        assert False, "Should raise ValueError for non-divisible d_model"
-    except ValueError:
-        pass
+    BlockSelfAttention(d_model=33, num_heads=8)

@@ -1,12 +1,12 @@
+import math
 from typing import Any
 
-import math
 import torch
 import torch.nn as nn
 
 from .base import BaseSelfAttention, scaled_dot_product_attention
-from .utils import reshape_for_attention, reshape_from_attention
 from .masks import expand_mask_for_heads
+from .utils import reshape_for_attention, reshape_from_attention
 
 
 class LSHSelfAttention(BaseSelfAttention):
@@ -36,20 +36,24 @@ class LSHSelfAttention(BaseSelfAttention):
         bucket_size: int = 64,
         num_hashes: int = 1,
         dropout: float = 0.1,
+        *,
         bias: bool = False,
         temperature: float = 1.0,
         rope: bool = False,
     ):
         if d_model % num_heads != 0:
-            raise ValueError(
+            message = (
                 f"d_model ({d_model}) must be divisible by num_heads ({num_heads})"
             )
+            raise ValueError(message)
         if bucket_size <= 0:
-            raise ValueError(f"bucket_size must be positive, got {bucket_size}")
+            message = f"bucket_size must be positive, got {bucket_size}"
+            raise ValueError(message)
         if num_hashes <= 0:
-            raise ValueError(f"num_hashes must be positive, got {num_hashes}")
+            message = f"num_hashes must be positive, got {num_hashes}"
+            raise ValueError(message)
 
-        super().__init__(d_model, input_dim, dropout, bias, rope)
+        super().__init__(d_model, input_dim, dropout, bias=bias, rope=rope)
 
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
@@ -89,99 +93,203 @@ class LSHSelfAttention(BaseSelfAttention):
             - attention_weights: [batch, num_heads, seq, seq] (sparse; zeros outside buckets)
         """
         batch_size, seq_len, _ = x.shape
-        H, Dh = self.num_heads, self.d_head
-
-        # Projections
-        q = self.w_q(x)
-        k = self.w_k(x)
-        v = self.w_v(x)
-
-        # To heads
-        q = reshape_for_attention(q, H, Dh)
-        k = reshape_for_attention(k, H, Dh)
-        v = reshape_for_attention(v, H, Dh)
-
-        # RoPE
+        q, k, v = self._project_inputs(x)
+        q, k, v = self._reshape_to_heads(q, k, v)
         if self.rope:
             q, k = self.apply_rope(q, k)
 
-        # Expand mask to [B, H, S, S] if provided
-        expanded_mask = expand_mask_for_heads(mask, batch_size, H, seq_len)
-
-        # Prepare accumulators
-        out_accum = torch.zeros_like(q)
-        attn_weights_accum = q.new_zeros((batch_size, H, seq_len, seq_len))
-
+        expanded_mask = expand_mask_for_heads(mask, batch_size, self.num_heads, seq_len)
         n_buckets = self._compute_num_buckets(seq_len)
 
-        # Perform num_hashes rounds and average
-        for _ in range(self.num_hashes):
-            # Random projections per head: [H, Dh, n_buckets]
-            # Non-trainable, re-sampled each forward for diversity
-            proj = torch.randn(H, Dh, n_buckets, device=x.device, dtype=x.dtype)
+        out_accum, attn_weights_accum = self._run_hash_rounds(
+            q,
+            k,
+            v,
+            expanded_mask,
+            batch_size,
+            seq_len,
+            n_buckets,
+            x.device,
+            x.dtype,
+        )
 
-            # Scores to buckets: [B, H, S, n_buckets]
-            scores = torch.einsum("bhld,hdm->bhlm", q, proj)  # cosine-like LSH by random directions
-            bucket_ids = scores.argmax(dim=-1)  # [B, H, S]
-
-            # Compute attention within each bucket
-            for b in range(batch_size):
-                for h in range(H):
-                    # Optional base mask for this (b, h)
-                    base_mask_bh = None
-                    if expanded_mask is not None:
-                        base_mask_bh = expanded_mask[b, h]
-
-                    # Group indices by bucket id
-                    ids_bh = bucket_ids[b, h]
-                    for bucket in range(n_buckets):
-                        idx = (ids_bh == bucket).nonzero(as_tuple=False).squeeze(-1)
-                        if idx.numel() == 0:
-                            continue
-
-                        q_g = q[b, h, idx]  # [Sg, Dh]
-                        k_g = k[b, h, idx]  # [Sg, Dh]
-                        v_g = v[b, h, idx]  # [Sg, Dh]
-
-                        # Build group mask if available
-                        group_mask = None
-                        if base_mask_bh is not None:
-                            group_mask = base_mask_bh.index_select(0, idx).index_select(1, idx)
-
-                        # Compute attention inside the group
-                        out_g, attn_g = scaled_dot_product_attention(
-                            q_g.unsqueeze(0),
-                            k_g.unsqueeze(0),
-                            v_g.unsqueeze(0),
-                            mask=group_mask.unsqueeze(0) if group_mask is not None else None,
-                            dropout=self.dropout,
-                            temperature=self.temperature,
-                        )
-                        out_g = out_g.squeeze(0)  # [Sg, Dh]
-                        attn_g = attn_g.squeeze(0)  # [Sg, Sg]
-
-                        # Scatter-add outputs back to positions
-                        out_accum[b, h, idx] = out_accum[b, h, idx] + out_g
-
-                        # Place attention weights into the global matrix (sparse)
-                        # Build (row, col) index grids for the group positions
-                        ii = idx.view(-1, 1).expand(attn_g.size(0), attn_g.size(1))
-                        jj = idx.view(1, -1).expand(attn_g.size(0), attn_g.size(1))
-                        # Accumulate since multiple hashes may write to same entries
-                        attn_weights_accum[b, h].index_put_((ii, jj), attn_g, accumulate=True)
-
-        # Average across hash rounds
         out_accum = out_accum / float(self.num_hashes)
         attn_weights_accum = attn_weights_accum / float(self.num_hashes)
 
-        # Back to [B, S, D]
         out_cat = reshape_from_attention(out_accum, self.d_model)
         output = self.w_o(out_cat)
-
-        # Store averaged attention weights for convenience (mean over heads)
         self.attention_weights = attn_weights_accum.mean(dim=1).detach()
 
         return output, attn_weights_accum
+
+    def _project_inputs(
+        self, x: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self.w_q(x), self.w_k(x), self.w_v(x)
+
+    def _reshape_to_heads(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return (
+            reshape_for_attention(q, self.num_heads, self.d_head),
+            reshape_for_attention(k, self.num_heads, self.d_head),
+            reshape_for_attention(v, self.num_heads, self.d_head),
+        )
+
+    def _run_hash_rounds(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        expanded_mask: torch.Tensor | None,
+        batch_size: int,
+        seq_len: int,
+        n_buckets: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        output_accum = torch.zeros_like(q)
+        weights_accum = q.new_zeros((batch_size, self.num_heads, seq_len, seq_len))
+
+        for _ in range(self.num_hashes):
+            projection = self._sample_projection(device, dtype, n_buckets)
+            round_output, round_weights = self._process_hash_round(
+                q,
+                k,
+                v,
+                expanded_mask,
+                projection,
+                batch_size,
+                seq_len,
+                n_buckets,
+            )
+            output_accum += round_output
+            weights_accum += round_weights
+        return output_accum, weights_accum
+
+    def _sample_projection(
+        self, device: torch.device, dtype: torch.dtype, n_buckets: int
+    ) -> torch.Tensor:
+        return torch.randn(
+            self.num_heads,
+            self.d_head,
+            n_buckets,
+            device=device,
+            dtype=dtype,
+        )
+
+    def _process_hash_round(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        expanded_mask: torch.Tensor | None,
+        projection: torch.Tensor,
+        batch_size: int,
+        seq_len: int,
+        n_buckets: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        bucket_ids = self._assign_buckets(q, projection)
+        round_output = torch.zeros_like(q)
+        round_weights = q.new_zeros((batch_size, self.num_heads, seq_len, seq_len))
+
+        for batch_index in range(batch_size):
+            for head_index in range(self.num_heads):
+                base_mask = self._select_head_mask(
+                    expanded_mask, batch_index, head_index
+                )
+                self._process_single_head(
+                    q,
+                    k,
+                    v,
+                    bucket_ids,
+                    round_output,
+                    round_weights,
+                    batch_index,
+                    head_index,
+                    base_mask,
+                    n_buckets,
+                )
+        return round_output, round_weights
+
+    @staticmethod
+    def _assign_buckets(q: torch.Tensor, projection: torch.Tensor) -> torch.Tensor:
+        scores = torch.einsum("bhld,hdm->bhlm", q, projection)
+        return scores.argmax(dim=-1)
+
+    @staticmethod
+    def _select_head_mask(
+        expanded_mask: torch.Tensor | None, batch_index: int, head_index: int
+    ) -> torch.Tensor | None:
+        if expanded_mask is None:
+            return None
+        return expanded_mask[batch_index, head_index]
+
+    def _process_single_head(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        bucket_ids: torch.Tensor,
+        round_output: torch.Tensor,
+        round_weights: torch.Tensor,
+        batch_index: int,
+        head_index: int,
+        base_mask: torch.Tensor | None,
+        n_buckets: int,
+    ) -> None:
+        head_ids = bucket_ids[batch_index, head_index]
+        for bucket in range(n_buckets):
+            indices = (head_ids == bucket).nonzero(as_tuple=False).flatten()
+            if indices.numel() == 0:
+                continue
+            group_output, group_weights = self._compute_group_attention(
+                q[batch_index, head_index],
+                k[batch_index, head_index],
+                v[batch_index, head_index],
+                indices,
+                base_mask,
+            )
+            round_output[batch_index, head_index, indices] += group_output
+            self._scatter_attention_weights(
+                round_weights[batch_index, head_index],
+                indices,
+                group_weights,
+            )
+
+    def _compute_group_attention(
+        self,
+        q_head: torch.Tensor,
+        k_head: torch.Tensor,
+        v_head: torch.Tensor,
+        indices: torch.Tensor,
+        base_mask: torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        q_group = q_head[indices]
+        k_group = k_head[indices]
+        v_group = v_head[indices]
+
+        group_mask = None
+        if base_mask is not None:
+            group_mask = base_mask.index_select(0, indices).index_select(1, indices)
+
+        out_g, attn_g = scaled_dot_product_attention(
+            q_group.unsqueeze(0),
+            k_group.unsqueeze(0),
+            v_group.unsqueeze(0),
+            mask=group_mask.unsqueeze(0) if group_mask is not None else None,
+            dropout=self.dropout,
+            temperature=self.temperature,
+        )
+        return out_g.squeeze(0), attn_g.squeeze(0)
+
+    @staticmethod
+    def _scatter_attention_weights(
+        target: torch.Tensor, indices: torch.Tensor, group_weights: torch.Tensor
+    ) -> None:
+        ii = indices.view(-1, 1).expand(group_weights.size(0), group_weights.size(1))
+        jj = indices.view(1, -1).expand(group_weights.size(0), group_weights.size(1))
+        target.index_put_((ii, jj), group_weights, accumulate=True)
 
     def get_config(self) -> dict[str, Any]:
         config = super().get_config()

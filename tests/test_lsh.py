@@ -1,12 +1,12 @@
 """Function-based test cases for LSHSelfAttention."""
 
-import torch
 import pytest
+import torch
 
 from attentions.lsh import LSHSelfAttention
 
 
-def test_lsh_forward_basic_shapes():
+def test_lsh_forward_basic_shapes() -> None:
     """LSH attention should return outputs and weights with expected shapes."""
     torch.manual_seed(0)
 
@@ -23,18 +23,21 @@ def test_lsh_forward_basic_shapes():
     x = torch.randn(batch_size, seq_len, d_model)
 
     output, attention_weights = attention(x)
+    assert attention_weights is not None
 
     assert output.shape == (batch_size, seq_len, d_model)
     assert attention_weights.shape == (batch_size, num_heads, seq_len, seq_len)
-    assert attention.attention_weights.shape == (batch_size, seq_len, seq_len)
-    assert torch.allclose(attention.attention_weights, attention_weights.mean(dim=1))
+    stored_weights = attention.attention_weights
+    assert stored_weights is not None
+    assert stored_weights.shape == (batch_size, seq_len, seq_len)
+    assert torch.allclose(stored_weights, attention_weights.mean(dim=1))
 
     row_sums = attention_weights.sum(dim=-1)
     ones = torch.ones_like(row_sums)
     assert torch.allclose(row_sums, ones, atol=1e-5)
 
 
-def test_lsh_forward_with_boolean_mask():
+def test_lsh_forward_with_boolean_mask() -> None:
     """Boolean masks should zero-out prohibited attention positions."""
     torch.manual_seed(1)
 
@@ -52,16 +55,17 @@ def test_lsh_forward_with_boolean_mask():
     mask[:, -3:] = False
 
     _, attention_weights = attention(x, mask=mask)
+    assert attention_weights is not None
 
     expanded_mask = mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)
     masked_values = attention_weights[~expanded_mask]
     assert torch.all(masked_values == 0)
 
 
-def test_lsh_initialization_errors():
+def test_lsh_initialization_errors() -> None:
     """Constructor should validate divisibility, bucket size, and hash count."""
     with pytest.raises(
-        ValueError, match="d_model \(33\) must be divisible by num_heads \(8\)"
+        ValueError, match=r"d_model \(33\) must be divisible by num_heads \(8\)"
     ):
         LSHSelfAttention(d_model=33, num_heads=8)
 
