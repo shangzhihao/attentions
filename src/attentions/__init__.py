@@ -4,19 +4,19 @@ This library provides clean, efficient implementations of various self-attention
 mechanisms used in transformer models and deep learning architectures.
 """
 
-from .alibi import AlibiSelfAttention
-from .base import (
+from attentions.alibi import AlibiSelfAttention
+from attentions.base import (
     BaseSelfAttention,
     scaled_dot_product_attention,
 )
-from .block import BlockSelfAttention
-from .dilation import DilatedSelfAttention
-from .group import GroupedSelfAttention
-from .linear import LinearSelfAttention
-from .local import LocalSelfAttention
-from .longformer import LongformerSelfAttention
-from .lsh import LSHSelfAttention
-from .masks import (
+from attentions.block import BlockSelfAttention
+from attentions.dilation import DilatedSelfAttention
+from attentions.group import GroupedSelfAttention
+from attentions.linear import LinearSelfAttention
+from attentions.local import LocalSelfAttention
+from attentions.longformer import LongformerSelfAttention
+from attentions.lsh import LSHSelfAttention
+from attentions.masks import (
     combine_masks,
     create_block_mask,
     create_causal_mask,
@@ -25,8 +25,8 @@ from .masks import (
     create_padding_mask,
     expand_mask_for_heads,
 )
-from .mhsa import MultiHeadSelfAttention
-from .vanilla import VanillaSelfAttention
+from attentions.mhsa import MultiHeadSelfAttention
+from attentions.vanilla import VanillaSelfAttention
 
 
 __version__ = "0.1.0"

@@ -3,8 +3,7 @@
 import torch
 
 from attentions.mhsa import MultiHeadSelfAttention
-
-from . import EPSILON
+from tests import EPSILON
 
 
 def test_mhsa_forward_basic_shapes() -> None:

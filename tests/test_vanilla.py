@@ -3,8 +3,7 @@
 import torch
 
 from attentions.vanilla import VanillaSelfAttention
-
-from . import EPSILON
+from tests import EPSILON
 
 
 def test_vanilla_forward_basic_shapes() -> None:
