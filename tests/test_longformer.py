@@ -3,8 +3,7 @@
 import torch
 
 from attentions.longformer import LongformerSelfAttention
-
-from . import EPSILON
+from tests import EPSILON
 
 
 def _longformer_attention_with_global_token() -> tuple[torch.Tensor, int, int]:

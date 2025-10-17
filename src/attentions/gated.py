@@ -3,7 +3,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from .base import BaseSelfAttention
+from attentions.base import BaseSelfAttention
 
 
 MULTI_HEAD_RANK = 4

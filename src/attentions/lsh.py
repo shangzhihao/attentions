@@ -4,9 +4,9 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from .base import BaseSelfAttention, scaled_dot_product_attention
-from .masks import expand_mask_for_heads
-from .utils import reshape_for_attention, reshape_from_attention
+from attentions.base import BaseSelfAttention, scaled_dot_product_attention
+from attentions.masks import expand_mask_for_heads
+from attentions.utils import reshape_for_attention, reshape_from_attention
 
 
 class LSHSelfAttention(BaseSelfAttention):

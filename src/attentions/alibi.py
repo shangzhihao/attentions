@@ -5,8 +5,8 @@ from typing import Any, cast
 import torch
 import torch.nn as nn
 
-from .base import BaseSelfAttention, scaled_dot_product_attention
-from .utils import reshape_for_attention, reshape_from_attention
+from attentions.base import BaseSelfAttention, scaled_dot_product_attention
+from attentions.utils import reshape_for_attention, reshape_from_attention
 
 
 MASK_RANK_SQUARE = 2

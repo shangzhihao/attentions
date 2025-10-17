@@ -3,8 +3,7 @@
 import torch
 
 from attentions.local import LocalSelfAttention
-
-from . import EPSILON
+from tests import EPSILON
 
 
 def test_local_forward_basic_shapes() -> None:
