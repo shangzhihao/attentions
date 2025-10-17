@@ -1,6 +1,6 @@
 [project]
 name = "attentions"
-version = "0.1.0"
+version = "0.1.01"
 description = "Modern PyTorch library for attention mechanisms in transformer models"
 readme = "README.md"
 requires-python = ">=3.12"
