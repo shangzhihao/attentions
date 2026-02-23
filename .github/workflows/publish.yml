@@ -1,20 +1,14 @@
 name: Publish
 
 on:
-  workflow_run:
-    workflows:
-      - Quality
-    types:
-      - completed
+  push:
+    tags:
+      - "v*"
 
 jobs:
   publish:
     name: Build and publish to PyPI
     runs-on: ubuntu-latest
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
     environment:
       name: pypi
     permissions:
@@ -23,8 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
