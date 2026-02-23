@@ -5,6 +5,7 @@ description = "Modern PyTorch library for attention mechanisms in transformer mo
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "numpy>=2.4.2",
     "torch>=2.8.0",
 ]
 

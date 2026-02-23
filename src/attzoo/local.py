@@ -4,13 +4,8 @@ import torch
 import torch.nn as nn
 
 from attzoo.base import BaseSelfAttention, scaled_dot_product_attention
-from attzoo.masks import create_local_mask
+from attzoo.masks import create_local_mask, expand_mask_for_heads
 from attzoo.utils import reshape_for_attention, reshape_from_attention
-
-
-MASK_DIM_SEQUENCE = 2
-MASK_DIM_BATCH = 3
-MASK_DIM_BATCH_HEAD = 4
 
 
 class LocalSelfAttention(BaseSelfAttention):
@@ -98,22 +93,23 @@ class LocalSelfAttention(BaseSelfAttention):
             local_mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)
         )
 
-        # Combine with additional mask if provided
-        if mask is not None:
-            mask_rank = mask.dim()
-            if mask_rank == MASK_DIM_SEQUENCE:
-                mask = (
-                    mask.unsqueeze(0).unsqueeze(0).expand(batch_size, num_heads, -1, -1)
-                )
-            elif mask_rank == MASK_DIM_BATCH:
-                mask = mask.unsqueeze(1).expand(-1, num_heads, -1, -1)
-            elif mask_rank == MASK_DIM_BATCH_HEAD:
-                pass  # Already in correct format
-
-            # Apply both local mask and provided mask
-            combined_mask = local_mask_expanded & mask.bool()
-        else:
+        if mask is None:
             combined_mask = local_mask_expanded
+        else:
+            expanded_mask = expand_mask_for_heads(mask, batch_size, num_heads, seq_len)
+            if expanded_mask is None:  # pragma: no cover - defensive, mask is not None
+                combined_mask = local_mask_expanded
+            elif expanded_mask.dtype == torch.bool:
+                combined_mask = local_mask_expanded & expanded_mask.to(query.device)
+            else:
+                expanded_mask = expanded_mask.to(query.device)
+                additive_local = torch.zeros_like(
+                    local_mask_expanded, dtype=expanded_mask.dtype
+                )
+                additive_local = additive_local.masked_fill(
+                    ~local_mask_expanded, float("-inf")
+                )
+                combined_mask = additive_local + expanded_mask
 
         # Apply scaled dot-product attention with the combined mask
         output, attention_weights = scaled_dot_product_attention(

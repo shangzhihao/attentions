@@ -57,10 +57,18 @@ class CombinedAttention(nn.Module):
                 f"attn_b.d_model ({attn_b.d_model})"
             )
             raise ValueError(message)
+        attn_a_input_dim = getattr(attn_a, "input_dim", attn_a.d_model)
+        attn_b_input_dim = getattr(attn_b, "input_dim", attn_b.d_model)
+        if attn_a_input_dim != attn_b_input_dim:
+            message = (
+                f"attn_a.input_dim ({attn_a_input_dim}) must equal "
+                f"attn_b.input_dim ({attn_b_input_dim})"
+            )
+            raise ValueError(message)
         self.attn_a = attn_a
         self.attn_b = attn_b
         self.d_model = attn_a.d_model
-        self.input_dim = input_dim if input_dim is not None else self.d_model
+        self.input_dim = input_dim if input_dim is not None else attn_a_input_dim
         self.gate = _make_att_weight(
             self.input_dim,
             gate_hidden=gate_hidden,

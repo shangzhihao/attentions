@@ -382,3 +382,26 @@ def test_local_forward_complexity_reduction() -> None:
 
                 non_zero_count = (attention_weights[0, head, i] > EPSILON).sum().item()
                 assert non_zero_count == expected_window_size
+
+
+def test_local_forward_additive_mask_matches_boolean_mask() -> None:
+    """Additive and boolean masks should produce equivalent masking behavior."""
+    batch_size, seq_len, d_model = 1, 8, 32
+    attention = LocalSelfAttention(
+        d_model=d_model, window_size=4, num_heads=4, dropout=0.0
+    )
+    attention.eval()
+
+    x = torch.randn(batch_size, seq_len, d_model)
+    bool_mask = torch.ones(seq_len, seq_len, dtype=torch.bool)
+    bool_mask[:, -1] = False
+
+    additive_mask = torch.zeros(seq_len, seq_len)
+    additive_mask[:, -1] = float("-inf")
+
+    out_bool, weights_bool = attention(x, mask=bool_mask)
+    out_add, weights_add = attention(x, mask=additive_mask)
+
+    assert not torch.isnan(weights_add).any()
+    assert torch.allclose(out_add, out_bool, atol=1e-5, rtol=1e-4)
+    assert torch.allclose(weights_add, weights_bool, atol=1e-5, rtol=1e-4)

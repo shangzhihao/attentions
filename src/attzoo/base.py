@@ -27,16 +27,32 @@ def scaled_dot_product_attention(
 
     # Compute attention scores
     scores = torch.matmul(query, key.transpose(-2, -1)) / (math.sqrt(d_k) * temperature)
+    bool_mask: torch.Tensor | None = None
 
     # Apply mask if provided
     if mask is not None:
         if mask.dtype == torch.bool:
-            scores = scores.masked_fill(mask == 0, float("-inf"))
+            bool_mask = mask.to(device=scores.device)
+            min_value = torch.finfo(scores.dtype).min
+            scores = scores.masked_fill(~bool_mask, min_value)
         else:
-            scores = scores + mask
+            scores = scores + mask.to(device=scores.device, dtype=scores.dtype)
 
     # Apply softmax to get attention weights
     attention_weights = functional.softmax(scores, dim=-1)
+    attention_weights = torch.nan_to_num(attention_weights, nan=0.0)
+
+    # For boolean masks, explicitly zero masked positions and renormalize.
+    if bool_mask is not None:
+        attention_weights = attention_weights * bool_mask.to(
+            dtype=attention_weights.dtype
+        )
+        normalizer = attention_weights.sum(dim=-1, keepdim=True)
+        attention_weights = torch.where(
+            normalizer > 0,
+            attention_weights / normalizer,
+            torch.zeros_like(attention_weights),
+        )
 
     # Apply dropout if provided
     if dropout is not None:
